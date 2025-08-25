@@ -906,8 +906,7 @@ impl ParsedInfo {
         };
         let gen_components = self.gen_components(add_no_mangle, dynamic_wasm);
         let gen_systems = self.gen_systems(add_no_mangle, dynamic_wasm);
-        let gen_load_proc_addrs =
-            self.gen_load_proc_addrs(add_no_mangle, dynamic_wasm);
+        let gen_load_proc_addrs = self.gen_load_proc_addrs(add_no_mangle, dynamic_wasm);
         let gen_wasm_functions = if dynamic_wasm {
             Self::gen_wasm_functions()
         } else {
@@ -1059,11 +1058,7 @@ impl ParsedInfo {
         }
     }
 
-    fn gen_components(
-        &self,
-        add_no_mangle: bool,
-        dynamic_wasm: bool,
-    ) -> TokenStream {
+    fn gen_components(&self, add_no_mangle: bool, dynamic_wasm: bool) -> TokenStream {
         let gen_set_component_id = self.gen_set_component_id(add_no_mangle);
         let gen_component_deserialize_json = if dynamic_wasm {
             self.gen_component_deserialize_json_wasm()
@@ -2421,11 +2416,7 @@ impl ParsedInfo {
         }
     }
 
-    fn gen_load_proc_addrs(
-        &self,
-        add_no_mangle: bool,
-        dynamic_wasm: bool,
-    ) -> TokenStream {
+    fn gen_load_proc_addrs(&self, add_no_mangle: bool, dynamic_wasm: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
         let engine_path = &self.engine_package_path;

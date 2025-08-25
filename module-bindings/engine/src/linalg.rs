@@ -196,7 +196,8 @@ impl From<glam::Vec3> for event::Vec3 {
 impl From<&event::Transform> for Transform {
     fn from(value: &event::Transform) -> Self {
         Self {
-            position: value.position().into(),
+            position: Vec2::new(value.position().x(), value.position().y()),
+            layer: value.position().z(),
             rotation: value.rotation(),
             scale: value.scale().into(),
             skew: value.skew().into(),
@@ -209,7 +210,7 @@ impl From<&event::Transform> for Transform {
 impl From<Transform> for event::Transform {
     fn from(value: Transform) -> Self {
         Self::new(
-            &(*value.position).into(),
+            &event::Vec3::new(value.position.x, value.position.y, value.layer),
             &(*value.scale).into(),
             &(*value.skew).into(),
             &(*value.pivot).into(),

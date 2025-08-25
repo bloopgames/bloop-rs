@@ -394,7 +394,11 @@ impl Default for FrameConfig {
 #[component(engine)]
 pub struct Transform {
     #[serde(default)]
-    pub position: linalg::Vec3,
+    pub position: linalg::Vec2,
+    /// Determines how sprites render on top of or underneath each other. Higher
+    /// layers render on top of lower layers.
+    #[serde(default)]
+    pub layer: f32,
     #[serde(default = "default_transform_scale")]
     pub scale: linalg::Vec2,
     #[serde(default)]
@@ -411,7 +415,8 @@ impl Default for Transform {
     fn default() -> Self {
         Self {
             position: Default::default(),
-            rotation: 0.0,
+            layer: 0.,
+            rotation: 0.,
             scale: Vec2::ONE.into(),
             skew: Vec2::ZERO.into(),
             pivot: Vec2::splat(0.5).into(),
@@ -421,7 +426,7 @@ impl Default for Transform {
 }
 
 impl Transform {
-    pub fn new(position: Vec3) -> Self {
+    pub fn new(position: Vec2) -> Self {
         Self {
             position: position.into(),
             ..Default::default()
@@ -434,7 +439,7 @@ impl Transform {
         translation: &Vec2,
     ) -> Self {
         Self {
-            position: translation.extend(0.0).into(),
+            position: (*translation).into(),
             scale: (*scale).into(),
             rotation,
             ..Default::default()
@@ -443,7 +448,7 @@ impl Transform {
 
     pub fn from_rotation_translation(rotation: f32, translation: &Vec2) -> Self {
         Self {
-            position: translation.extend(0.0).into(),
+            position: (*translation).into(),
             rotation,
             ..Default::default()
         }
@@ -451,7 +456,7 @@ impl Transform {
 
     pub fn from_translation(translation: &Vec2) -> Self {
         Self {
-            position: translation.extend(0.0).into(),
+            position: (*translation).into(),
             ..Default::default()
         }
     }

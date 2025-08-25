@@ -95,7 +95,7 @@ pub fn set_world_position(
     let local_to_parent = Mat4::from_scale_rotation_translation(
         transform.scale.extend(0f32),
         Quat::from_rotation_z(transform.rotation),
-        *transform.position,
+        transform.position.extend(transform.layer),
     );
 
     let world_to_parent = local_to_parent * local_to_world.model_matrix().inverse();

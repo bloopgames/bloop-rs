@@ -3,6 +3,7 @@ pub use glam::{
     self, Mat2, Mat3, Quat,
     swizzles::{Vec2Swizzles, Vec3Swizzles, Vec4Swizzles},
 };
+pub use rand::Rng;
 
 pub use crate::{
     Aspect, AssetId, Camera, CameraAspect, Component, ComponentId, EcsType, Engine, EntityId,
