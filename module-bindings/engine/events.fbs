@@ -1,0 +1,432 @@
+// Command to generate schema:
+// flatc --[LANG] -o [OUTPUT] [INPUT] --gen-object-api --gen-name-strings
+
+struct Vec2 {
+  x:float;
+  y:float;
+}
+
+struct Vec3 {
+  x:float;
+  y:float;
+  z:float;
+}
+
+struct Mat3x3 {
+  m:[float:9];
+}
+
+struct Transform {
+  position:Vec3;
+  scale:Vec2;
+  skew:Vec2;
+  /// 0 -> 1 relative to top left.
+  pivot:Vec2;
+  /// Radians.
+  rotation:float;
+}
+
+namespace Physics;
+
+struct BoxCollision {
+  entities:[uint64:2];
+}
+
+struct CircleCollision {
+  entities:[uint64:2];
+}
+
+namespace Graphics;
+
+struct Color {
+  r:float;
+  g:float;
+  b:float;
+  a:float;
+}
+
+struct DrawCircle {
+  position:Vec2;
+  z:float;
+  radius:float;
+  subdivisions:uint32;
+  rotation:float;
+  color:Color;
+}
+
+table DrawRectangle {
+    position:Vec3;
+    size:Vec2;
+    rotation:float = null;
+    color:Color;
+    asset_id:uint32 = null;
+}
+
+struct DrawLine {
+  from:Vec2;
+  to:Vec2;
+  z:float;
+  thickness:float;
+  color:Color;
+}
+
+table NewText {
+  id: uint32;
+  asset_path: string;
+  set_up_watcher: bool;
+}
+
+enum TextMessageFormatType : int {
+  Json = 0,
+  Toml = 1,
+  Csv = 2,
+  Text = 3,
+}
+
+table TextLoaded {
+  id: uint32;
+  asset_path: string;
+  raw_text: string;
+  format: TextMessageFormatType;
+  watcher_set_up: bool;
+}
+
+table TextReloaded {
+  id: uint32;
+}
+
+table TextFailed {
+  id: uint32;
+  asset_path: string;
+  reason: string;
+}
+
+enum TextAlignment : ubyte {
+  Left,
+  Center,
+  Right,
+}
+
+table DrawText {
+  transform:Transform;
+  z:float;
+  bounds:Vec2;
+  text:string;
+  color:Color;
+  font_size:float;
+  text_alignment:TextAlignment;
+}
+
+struct NewPipeline {
+  id: uint32;
+  material_id: uint32;
+}
+
+struct PipelineLoaded {
+  id: uint32;
+  material_id: uint32;
+}
+
+table PipelineFailed {
+  id: uint32;
+  material_id: uint32;
+  reason: string;
+}
+
+struct ReloadPipeline {
+  id: uint32;
+  material_id: uint32;
+}
+
+struct MaterialIdFromTextId {
+  material_id: uint32;
+  text_id: uint32;
+}
+
+namespace Input;
+
+/// Conforms to the W3 UI Events spec
+enum KeyCode : ubyte {
+  Backquote,
+  Backslash,
+  BracketLeft,
+  BracketRight,
+  Comma,
+  Digit0,
+  Digit1,
+  Digit2,
+  Digit3,
+  Digit4,
+  Digit5,
+  Digit6,
+  Digit7,
+  Digit8,
+  Digit9,
+  Equal,
+  IntlBackslash,
+  IntlRo,
+  IntlYen,
+  KeyA,
+  KeyB,
+  KeyC,
+  KeyD,
+  KeyE,
+  KeyF,
+  KeyG,
+  KeyH,
+  KeyI,
+  KeyJ,
+  KeyK,
+  KeyL,
+  KeyM,
+  KeyN,
+  KeyO,
+  KeyP,
+  KeyQ,
+  KeyR,
+  KeyS,
+  KeyT,
+  KeyU,
+  KeyV,
+  KeyW,
+  KeyX,
+  KeyY,
+  KeyZ,
+  Minus,
+  Period,
+  Quote,
+  Semicolon,
+  Slash,
+  AltLeft,
+  AltRight,
+  Backspace,
+  CapsLock,
+  ContextMenu,
+  ControlLeft,
+  ControlRight,
+  Enter,
+  MetaLeft,
+  MetaRight,
+  ShiftLeft,
+  ShiftRight,
+  Space,
+  Tab,
+  Convert,
+  KanaMode,
+  Lang1,
+  Lang2,
+  Lang3,
+  Lang4,
+  Lang5,
+  NonConvert,
+  Delete,
+  End,
+  Help,
+  Home,
+  Insert,
+  PageDown,
+  PageUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  NumLock,
+  Numpad0,
+  Numpad1,
+  Numpad2,
+  Numpad3,
+  Numpad4,
+  Numpad5,
+  Numpad6,
+  Numpad7,
+  Numpad8,
+  Numpad9,
+  NumpadAdd,
+  NumpadBackspace,
+  NumpadClear,
+  NumpadClearEntry,
+  NumpadComma,
+  NumpadDecimal,
+  NumpadDivide,
+  NumpadEnter,
+  NumpadEqual,
+  NumpadHash,
+  NumpadMemoryAdd,
+  NumpadMemoryClear,
+  NumpadMemoryRecall,
+  NumpadMemoryStore,
+  NumpadMemorySubtract,
+  NumpadMultiply,
+  NumpadParenLeft,
+  NumpadParenRight,
+  NumpadStar,
+  NumpadSubtract,
+  Escape,
+  Fn,
+  FnLock,
+  PrintScreen,
+  ScrollLock,
+  Pause,
+  BrowserBack,
+  BrowserFavorites,
+  BrowserForward,
+  BrowserHome,
+  BrowserRefresh,
+  BrowserSearch,
+  BrowserStop,
+  Eject,
+  LaunchApp1,
+  LaunchApp2,
+  LaunchMail,
+  MediaPlayPause,
+  MediaSelect,
+  MediaStop,
+  MediaTrackNext,
+  MediaTrackPrevious,
+  Power,
+  Sleep,
+  AudioVolumeDown,
+  AudioVolumeMute,
+  AudioVolumeUp,
+  WakeUp,
+  Hyper,
+  Super,
+  Turbo,
+  Abort,
+  Resume,
+  Suspend,
+  Again,
+  Copy,
+  Cut,
+  Find,
+  Open,
+  Paste,
+  Props,
+  Select,
+  Undo,
+  Hiragana,
+  Katakana,
+  F1,
+  F2,
+  F3,
+  F4,
+  F5,
+  F6,
+  F7,
+  F8,
+  F9,
+  F10,
+  F11,
+  F12,
+  F13,
+  F14,
+  F15,
+  F16,
+  F17,
+  F18,
+  F19,
+  F20,
+  F21,
+  F22,
+  F23,
+  F24,
+  F25,
+  F26,
+  F27,
+  F28,
+  F29,
+  F30,
+  F31,
+  F32,
+  F33,
+  F34,
+  F35,
+}
+
+enum ElementState : ubyte {
+  Pressed,
+  Released,
+}
+
+struct KeyboardInput {
+  key_code:KeyCode;
+  state:ElementState;
+}
+
+struct MousePosition {
+  x:float;
+  y:float;
+}
+
+enum MouseButton : ubyte {
+  Left,
+  Right,
+  Middle,
+}
+
+struct MouseButtonInput {
+  button:MouseButton;
+  state:ElementState;
+}
+
+struct MouseScroll {
+  x:float;
+  y:float;
+}
+
+table GamepadConnected {
+  id:uint32;
+  button_count:uint32;
+  axis_count:uint32;
+  name:string;
+}
+
+struct GamepadDisconnected {
+  id:uint32;
+}
+
+struct GamepadButton {
+  id:uint32;
+  index:uint32;
+  value:float;
+}
+
+struct GamepadAxis {
+  id:uint32;
+  index:uint32;
+  value:float;
+}
+
+struct WindowResized {
+  width:uint32;
+  height:uint32;
+  /// If `true`, the `Aspect` resource will be updated to match the new window
+  /// size. This should be `true` for most platforms.
+  update_aspect:bool;
+}
+
+struct WindowFocused {
+  window_id:uint8;
+}
+
+struct WindowUnfocused {
+  window_id:uint8;
+}
+
+namespace Network;
+
+namespace ParticleEffects;
+
+table SpawnParticleEffect {
+  handle:uint64;
+  descriptor_asset_id:uint32;
+}
+
+table DespawnParticleEffect {
+  handle:uint64;
+}
+
+table SetParticleEffectTransform {
+  handle:uint64;
+  transform:Transform;
+}

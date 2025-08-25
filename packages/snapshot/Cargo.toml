@@ -1,0 +1,10 @@
+[package]
+name = "snapshot"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+aligned-vec.workspace = true
+atomic_refcell.workspace = true
+glam.workspace = true
+snapshot-derive.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "physics-rs"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+engine.workspace = true
+
+[features]
+dynamic_wasm = ["engine/dynamic_wasm"]

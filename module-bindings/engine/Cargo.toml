@@ -1,0 +1,24 @@
+[package]
+name = "engine"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+bytemuck.workspace = true
+engine-derive.workspace = true
+flatbuffers.workspace = true
+glam = { workspace = true, features = ["bytemuck", "serde"] }
+log.workspace = true
+rand.workspace = true
+rand_pcg.workspace = true
+snapshot.workspace = true
+snapshot-derive.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde-big-array.workspace = true
+
+[build-dependencies]
+module-codegen.workspace = true
+
+[features]
+dynamic_wasm = []
