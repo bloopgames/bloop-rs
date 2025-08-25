@@ -36,6 +36,7 @@ pub use glam::{
     Mat2, Mat3, Mat4, Quat, Vec2, Vec3, Vec4,
     swizzles::{Vec2Swizzles, Vec3Swizzles, Vec4Swizzles},
 };
+pub use log;
 pub use serde;
 pub use serde_json;
 use serialize::{

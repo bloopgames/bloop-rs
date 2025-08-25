@@ -942,8 +942,8 @@ impl ParsedInfo {
 
         let logger_init = if add_no_mangle {
             quote! {
-                ::log::set_logger(&LOGGER).expect("failed to initialize logger");
-                ::log::set_max_level(log::LevelFilter::Trace);
+                #engine_path ::log::set_logger(&LOGGER).expect("failed to initialize logger");
+                #engine_path ::log::set_max_level(#engine_path ::log::LevelFilter::Trace);
             }
         } else {
             quote! {}
