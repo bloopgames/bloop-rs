@@ -17,6 +17,7 @@ use std::{
 };
 
 use colored::Colorize;
+use convert_case::{Case, Casing};
 use iterator_helper::SplitExt;
 use prettyplease::unparse;
 use proc_macro2::TokenStream;
@@ -24,9 +25,10 @@ use quote::{ToTokens, format_ident, quote};
 use regex::Regex;
 use syn::{
     Attribute, FnArg, GenericArgument, GenericParam, Ident, ImplItem, Item, ItemFn, ItemImpl,
-    ItemMod, LitCStr, PathArguments, Type, TypeParamBound, parse_quote, parse2,
+    ItemMod, LitCStr, PathArguments, Type, TypeParamBound, parse_quote, parse_str, parse2,
     punctuated::Punctuated, spanned::Spanned,
 };
+use toml::Table;
 
 mod iterator_helper;
 mod syn_helper;
@@ -47,7 +49,6 @@ pub struct FfiBuilder<'a> {
     pub module_name: String,
     out_dir: Option<Cow<'a, Path>>,
     input_path: Option<Cow<'a, Path>>,
-    imported_modules: &'a [&'a str],
     engine_package_path: &'a str,
     add_no_mangle: bool,
     dynamic_wasm: bool,
@@ -79,7 +80,6 @@ impl<'a> FfiBuilder<'a> {
             module_name,
             out_dir: None,
             input_path: None,
-            imported_modules: &[],
             engine_package_path: "::engine",
             add_no_mangle: true,
             dynamic_wasm: false,
@@ -99,11 +99,6 @@ impl<'a> FfiBuilder<'a> {
 
     pub fn input_path(mut self, input_path: &'a Path) -> Self {
         self.input_path = Some(Cow::from(input_path));
-        self
-    }
-
-    pub fn import_modules(mut self, imported_modules: &'a [&'a str]) -> Self {
-        self.imported_modules = imported_modules;
         self
     }
 
@@ -287,6 +282,8 @@ fn write_ffi(out_dir: &Path, input_path: &Path, builder: &FfiBuilder<'_>) -> Res
 
     let mut parsed_info = ParsedInfo::new(&builder.module_name, builder.engine_package_path);
 
+    parsed_info.parse_manifest_file();
+
     // Parse the file with `syn`.
     let file = syn::parse_file(&input).map_err(|error| Error::ParseFile {
         error,
@@ -319,7 +316,6 @@ fn write_ffi(out_dir: &Path, input_path: &Path, builder: &FfiBuilder<'_>) -> Res
     let token_stream = parsed_info.gen_ffi(
         builder.add_no_mangle,
         builder.dynamic_wasm,
-        builder.imported_modules,
         builder.gen_empty_functions,
     );
 
@@ -378,6 +374,7 @@ pub struct ParsedInfo {
     ecs_types: Vec<EcsTypeInfo>,
     /// A list of paths to all ECS types used but not declared by this crate.
     imported_ecs_types: Vec<syn::Path>,
+    imported_modules: Vec<syn::Path>,
 }
 
 impl ParsedInfo {
@@ -412,6 +409,7 @@ impl ParsedInfo {
             deinit_functions: Vec::new(),
             ecs_types: Vec::new(),
             imported_ecs_types,
+            imported_modules: Vec::new(),
         }
     }
 }
@@ -470,6 +468,44 @@ struct EcsTypeInfo {
 }
 
 impl ParsedInfo {
+    /// Parse the `Cargo.toml` file to scan it for any imported modules. This is
+    /// a temporary solution which should be solved by a module package manager.
+    fn parse_manifest_file(&mut self) {
+        // List of modules to scan for.
+        const MODULES: &[&str] = &["animation-rs", "audio-rs", "physics-rs"];
+
+        let Ok(manifest) = fs::read_to_string(current_dir().unwrap().join("Cargo.toml")) else {
+            // No manifest found. Odd but not fatal, just skip manifest parsing.
+            return;
+        };
+
+        let Ok(manifest) = toml::from_str::<Table>(&manifest) else {
+            return;
+        };
+
+        let dependencies_table = manifest
+            .get("dependencies")
+            .and_then(|deps| deps.as_table());
+
+        let dependencies = dependencies_table
+            .iter()
+            .flat_map(|deps| deps.iter())
+            .filter_map(|(dep, table)| table.as_table().map(|t| (dep, t)))
+            // Check if the dependency name or the `package` table entry match.
+            .filter(|(dep, dep_table)| {
+                MODULES.iter().any(|module| {
+                    dep == module
+                        || dep_table
+                            .get("package")
+                            .is_some_and(|p| p.as_str().is_some_and(|p| p == *module))
+                })
+            })
+            // Convert dashes to underscores.
+            .flat_map(|(dep, _)| parse_str(&dep.to_case(Case::Snake)));
+
+        self.imported_modules.extend(dependencies);
+    }
+
     /// Parse a top-level file or mod.
     fn parse_item(&mut self, item: &Item, working_dir: &Path, mod_path: &syn::Path) {
         match item {
@@ -857,7 +893,6 @@ impl ParsedInfo {
         &self,
         add_no_mangle: bool,
         dynamic_wasm: bool,
-        import_modules: &[&str],
         gen_empty_functions: bool,
     ) -> TokenStream {
         let gen_version = self.gen_version(add_no_mangle);
@@ -869,10 +904,10 @@ impl ParsedInfo {
         } else {
             TokenStream::new()
         };
-        let gen_components = self.gen_components(add_no_mangle, import_modules, dynamic_wasm);
+        let gen_components = self.gen_components(add_no_mangle, dynamic_wasm);
         let gen_systems = self.gen_systems(add_no_mangle, dynamic_wasm);
         let gen_load_proc_addrs =
-            self.gen_load_proc_addrs(add_no_mangle, import_modules, dynamic_wasm);
+            self.gen_load_proc_addrs(add_no_mangle, dynamic_wasm);
         let gen_wasm_functions = if dynamic_wasm {
             Self::gen_wasm_functions()
         } else {
@@ -1027,10 +1062,9 @@ impl ParsedInfo {
     fn gen_components(
         &self,
         add_no_mangle: bool,
-        import_modules: &[&str],
         dynamic_wasm: bool,
     ) -> TokenStream {
-        let gen_set_component_id = self.gen_set_component_id(add_no_mangle, import_modules);
+        let gen_set_component_id = self.gen_set_component_id(add_no_mangle);
         let gen_component_deserialize_json = if dynamic_wasm {
             self.gen_component_deserialize_json_wasm()
         } else {
@@ -1265,13 +1299,12 @@ impl ParsedInfo {
         }
     }
 
-    fn gen_set_component_id(&self, add_no_mangle: bool, import_modules: &[&str]) -> TokenStream {
+    fn gen_set_component_id(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
         let engine_path = &self.engine_package_path;
 
-        let module_set_id_fns = import_modules.iter().fold(quote!(), |acc, val| {
-            let path = format_ident!("{val}");
+        let module_set_id_fns = self.imported_modules.iter().fold(quote!(), |acc, path| {
             quote! { #acc :: #path ::set_component_id(string_id, id); }
         });
 
@@ -2391,16 +2424,14 @@ impl ParsedInfo {
     fn gen_load_proc_addrs(
         &self,
         add_no_mangle: bool,
-        import_modules: &[&str],
         dynamic_wasm: bool,
     ) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
         let engine_path = &self.engine_package_path;
 
-        let module_proc_addr_fns = import_modules.iter().fold(quote!(), |acc, val| {
-            let name = format_ident!("{val}");
-            quote! { #acc :: #name ::load_module_proc_addrs(get_proc_addr, ctx); }
+        let module_proc_addr_fns = self.imported_modules.iter().fold(quote!(), |acc, path| {
+            quote! { #acc :: #path ::load_module_proc_addrs(get_proc_addr, ctx); }
         });
 
         let fn_body = quote! {
