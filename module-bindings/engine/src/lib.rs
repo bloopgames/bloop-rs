@@ -1146,7 +1146,7 @@ impl Engine {
         }
     }
 
-    fn set_fully_qualified_system_enabled(fully_qualified_system_name: &CStr, enabled: bool) {
+    pub fn set_fully_qualified_system_enabled(fully_qualified_system_name: &CStr, enabled: bool) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(
