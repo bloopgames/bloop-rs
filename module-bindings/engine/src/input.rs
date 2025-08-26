@@ -10,6 +10,7 @@ use snapshot_derive::{DeserializeEngine, SerializeEngine};
 
 use crate::{
     ComponentId, EcsType, Resource,
+    dst::{option::EcsOption, string::EcsString, vec::EcsVec},
     event::input::{KeyCode, MouseButton},
 };
 
@@ -19,6 +20,7 @@ use crate::{
 pub struct InputState {
     pub keys: KeyboardInputState,
     pub mouse: MouseState,
+    pub controllers: EcsVec<ControllerState>,
 }
 
 /// Stores the button state for all supported keycodes.
@@ -153,5 +155,40 @@ impl Debug for ButtonState {
             .field("just_pressed", &self.just_pressed())
             .field("just_released", &self.just_released())
             .finish()
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct ControllerState {
+    pub id: u8,
+    pub name: EcsOption<EcsString>,
+    pub buttons: EcsVec<ControllerButtonState>,
+    pub axes: EcsVec<f32>,
+}
+
+#[derive(Debug, Default)]
+#[repr(C)]
+pub struct ControllerButtonState {
+    pub current_value: f32,
+    pub prev_value: f32,
+}
+
+impl ControllerButtonState {
+    const PRESSED_THRESHOLD: f32 = 0.9;
+
+    /// Returns `true` if the button is currently pressed.
+    pub fn pressed(&self) -> bool {
+        self.current_value >= Self::PRESSED_THRESHOLD
+    }
+
+    /// Returns `true` if the button was just pressed this frame.
+    pub fn just_pressed(&self) -> bool {
+        self.pressed() && self.prev_value < Self::PRESSED_THRESHOLD
+    }
+
+    /// Returns `true` if the button was just released this frame.
+    pub fn just_released(&self) -> bool {
+        !self.pressed() && self.prev_value >= Self::PRESSED_THRESHOLD
     }
 }

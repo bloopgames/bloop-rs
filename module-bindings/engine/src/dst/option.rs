@@ -1,8 +1,9 @@
 use snapshot::{Deserialize, Deserializer, ReadUninit, Serialize, Serializer, WriteUninit};
 
-#[derive(Clone, Copy, Debug, Eq, PartialOrd, Ord, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialOrd, Ord, serde::Deserialize)]
 #[repr(C)]
 pub enum EcsOption<T> {
+    #[default]
     None,
     Some(T),
 }

@@ -63,6 +63,17 @@ impl<T> EcsVec<T> {
         self.len as usize
     }
 
+    /// # Safety
+    ///
+    /// - `new_len` must be less than or equal to [`capacity()`].
+    /// - The elements at `old_len..new_len` must be initialized.
+    #[inline]
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        debug_assert!(new_len <= self.capacity());
+
+        self.len = new_len as u32;
+    }
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
@@ -144,6 +155,44 @@ impl<T> EcsVec<T> {
             let cap = cmp::max(additional, min_non_zero_cap);
 
             self.backing_store = BackingStore::with_capacity(cap).into();
+        }
+    }
+
+    /// Removes and returns the element at position `index` within the vector,
+    /// shifting all elements after it to the left.
+    ///
+    /// TODO: also implement for `dynamic_wasm` feature.
+    #[cfg(not(feature = "dynamic_wasm"))]
+    #[track_caller]
+    pub fn remove(&mut self, index: usize) -> T {
+        #[cold]
+        #[track_caller]
+        fn assert_failed(index: usize, len: usize) -> ! {
+            panic!("removal index (is {index}) should be < len (is {len})");
+        }
+
+        let len = self.len();
+        if index >= len {
+            assert_failed(index, len);
+        }
+
+        unsafe {
+            // Infallible.
+            let ret;
+
+            {
+                // The place we are taking from.
+                let ptr = self.as_ptr().add(index).as_ptr();
+                // Copy it out, unsafely having a copy of the value on the stack
+                // and in the vector at the same time.
+                ret = std::ptr::read(ptr);
+
+                // Shift everything down to fill in that spot.
+                std::ptr::copy(ptr.add(1), ptr, len - index - 1);
+            }
+
+            self.set_len(len - 1);
+            ret
         }
     }
 
@@ -237,6 +286,26 @@ impl<T> FromIterator<T> for EcsVec<T> {
         }
 
         vec
+    }
+}
+
+impl<'a, T> IntoIterator for &'a EcsVec<T> {
+    type Item = Ref<'a, T>;
+
+    type IntoIter = EcsSliceIter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut EcsVec<T> {
+    type Item = Mut<'a, T>;
+
+    type IntoIter = EcsSliceIterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 
