@@ -65,7 +65,7 @@ pub mod dst;
 pub mod event;
 pub mod graphics;
 pub mod input;
-pub mod linalg;
+pub mod lin_alg;
 pub mod logger;
 pub mod material;
 pub mod pipeline;
@@ -394,17 +394,17 @@ impl Default for FrameConfig {
 #[component(engine)]
 pub struct Transform {
     #[serde(default)]
-    pub position: linalg::Vec2,
+    pub position: Vec2,
     /// Determines how sprites render on top of or underneath each other. Higher
     /// layers render on top of lower layers.
     #[serde(default)]
     pub layer: f32,
     #[serde(default = "default_transform_scale")]
-    pub scale: linalg::Vec2,
+    pub scale: Vec2,
     #[serde(default)]
-    pub skew: linalg::Vec2,
+    pub skew: Vec2,
     #[serde(default = "default_transform_pivot")]
-    pub pivot: linalg::Vec2,
+    pub pivot: Vec2,
     #[serde(default)]
     pub rotation: f32,
     #[serde(skip)]
@@ -417,9 +417,9 @@ impl Default for Transform {
             position: Default::default(),
             layer: 0.,
             rotation: 0.,
-            scale: Vec2::ONE.into(),
-            skew: Vec2::ZERO.into(),
-            pivot: Vec2::splat(0.5).into(),
+            scale: Vec2::ONE,
+            skew: Vec2::ZERO,
+            pivot: Vec2::splat(0.5),
             _padding: 0.,
         }
     }
@@ -428,7 +428,7 @@ impl Default for Transform {
 impl Transform {
     pub fn new(position: Vec2) -> Self {
         Self {
-            position: position.into(),
+            position,
             ..Default::default()
         }
     }
@@ -439,8 +439,8 @@ impl Transform {
         translation: &Vec2,
     ) -> Self {
         Self {
-            position: (*translation).into(),
-            scale: (*scale).into(),
+            position: *translation,
+            scale: *scale,
             rotation,
             ..Default::default()
         }
@@ -448,7 +448,7 @@ impl Transform {
 
     pub fn from_rotation_translation(rotation: f32, translation: &Vec2) -> Self {
         Self {
-            position: (*translation).into(),
+            position: *translation,
             rotation,
             ..Default::default()
         }
@@ -456,7 +456,7 @@ impl Transform {
 
     pub fn from_translation(translation: &Vec2) -> Self {
         Self {
-            position: (*translation).into(),
+            position: *translation,
             ..Default::default()
         }
     }
@@ -470,11 +470,11 @@ impl Transform {
 #[repr(C)]
 #[derive(Debug, bytemuck::Pod, bytemuck::Zeroable)]
 #[component(engine)]
-pub struct LocalToWorld(linalg::Mat4);
+pub struct LocalToWorld(Mat4);
 
 impl Default for LocalToWorld {
     fn default() -> Self {
-        Self(linalg::Mat4::new(Mat4::IDENTITY))
+        Self(Mat4::IDENTITY)
     }
 }
 
@@ -487,27 +487,15 @@ impl Display for LocalToWorld {
     }
 }
 
-impl From<linalg::Mat4> for LocalToWorld {
-    fn from(value: linalg::Mat4) -> Self {
-        Self(value)
-    }
-}
-
-impl From<LocalToWorld> for linalg::Mat4 {
-    fn from(value: LocalToWorld) -> Self {
-        value.0
-    }
-}
-
 impl From<Mat4> for LocalToWorld {
     fn from(value: Mat4) -> Self {
-        Self(linalg::Mat4::from(value))
+        Self(value)
     }
 }
 
 impl From<LocalToWorld> for Mat4 {
     fn from(value: LocalToWorld) -> Self {
-        *value.0
+        value.0
     }
 }
 
@@ -607,12 +595,12 @@ pub struct Camera {
     /// The matrix that converts from world-space to camera space (view-space).
     /// Intended for internal use only.
     #[serde(default = "default_camera_view_matrix")]
-    pub __view_matrix: linalg::Mat4,
+    pub __view_matrix: Mat4,
 
     /// The matrix that converts from camera-space into homogenous clip space.
     /// Intended for internal use only.
     #[serde(default = "default_camera_projection_matrix")]
-    pub __projection_matrix: linalg::Mat4,
+    pub __projection_matrix: Mat4,
 }
 
 #[repr(u8)]
@@ -642,8 +630,8 @@ impl Default for Camera {
             viewport_area: Viewport::default(),
             render_target_texture_id: FfiOption::new(None),
             render_order: 0,
-            __view_matrix: linalg::Mat4::new(Mat4::IDENTITY),
-            __projection_matrix: linalg::Mat4::new(Mat4::IDENTITY),
+            __view_matrix: Mat4::IDENTITY,
+            __projection_matrix: Mat4::IDENTITY,
         }
     }
 }

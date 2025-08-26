@@ -1,6 +1,6 @@
 pub use engine_derive::{component, resource, system, system_once};
 pub use glam::{
-    self, Mat2, Mat3, Quat,
+    self, Mat2, Mat3, Mat4, Quat, Vec2, Vec3, Vec4,
     swizzles::{Vec2Swizzles, Vec3Swizzles, Vec4Swizzles},
 };
 pub use rand::Rng;
@@ -17,7 +17,6 @@ pub use crate::{
         TextureRender,
     },
     input::InputState,
-    linalg::{Mat4, Vec2, Vec3, Vec4},
     material::{DefaultMaterials, MaterialId, MaterialParameters, ShaderTemplateId},
     query::Query,
     rand::EngineRng,

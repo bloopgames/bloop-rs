@@ -5,11 +5,11 @@ use std::{
 };
 
 use engine_derive::component;
+use glam::Vec4;
 
 use crate::{
     Component, ComponentId, EcsType,
     event::{self, graphics::Color as EventColor},
-    linalg::Vec4,
 };
 
 #[repr(C)]
@@ -202,6 +202,16 @@ impl Color {
         )
     }
 
+    /// Converts a R8G8B8A8 `u32` to a `Color. Alpha must be included.
+    pub fn from_rgba_u32(hex: u32) -> Self {
+        let r = f32::from(((hex >> 24) & 0xFF) as u8) / 255.0;
+        let g = f32::from(((hex >> 16) & 0xFF) as u8) / 255.0;
+        let b = f32::from(((hex >> 8) & 0xFF) as u8) / 255.0;
+        let a = f32::from((hex & 0xFF) as u8) / 255.0;
+
+        Self::new(r, g, b, a)
+    }
+
     /// New color from hsv. Hue `h` should be between 0-360. Saturation `s` between 0-1. Value `v` between 0-1.
     pub fn from_hsv(h: f32, s: f32, v: f32) -> Self {
         Self::from_hsva(h, s, v, 1.0)
@@ -255,6 +265,39 @@ impl Color {
 
         let m = l - chroma / 2.0; // Match lightness
         Color::new(r1 + m, g1 + m, b1 + m, a)
+    }
+
+    /// Converts from a hex string to a `Color`. The string may begin with a
+    /// leading `#` but this is not required.
+    pub fn from_hex_str(hex: &str) -> Result<Self, HexError> {
+        let code = hex.trim_start_matches('#');
+
+        match code.len() {
+            3 => {
+                let rr = &code.chars().nth(0).unwrap();
+                let gg = &code.chars().nth(1).unwrap();
+                let bb = &code.chars().nth(2).unwrap();
+
+                let r = try_str_to_num(&format!("{rr}{rr}"))?;
+                let g = try_str_to_num(&format!("{gg}{gg}"))?;
+                let b = try_str_to_num(&format!("{bb}{bb}"))?;
+                Ok(Self::new(r, g, b, 1.0))
+            }
+            6 => {
+                let r = try_str_to_num(&code[0..2])?;
+                let g = try_str_to_num(&code[2..4])?;
+                let b = try_str_to_num(&code[4..6])?;
+                Ok(Self::new(r, g, b, 1.0))
+            }
+            8 => {
+                let r = try_str_to_num(&code[0..2])?;
+                let g = try_str_to_num(&code[2..4])?;
+                let b = try_str_to_num(&code[4..6])?;
+                let a = try_str_to_num(&code[6..8])?;
+                Ok(Self::new(r, g, b, a))
+            }
+            _ => Err(HexError::InvalidLength),
+        }
     }
 
     /// Red. Between 0-1
@@ -375,6 +418,14 @@ impl Color {
             self.a8()
         )
     }
+
+    // Combine the components into a single u32 value (RGBA format).
+    pub fn to_rgba_u32(self) -> u32 {
+        ((self.r8() as u32) << 24)
+            | ((self.g8() as u32) << 16)
+            | ((self.b8() as u32) << 8)
+            | (self.a8() as u32)
+    }
 }
 
 impl From<Vec4> for Color {
@@ -385,7 +436,7 @@ impl From<Vec4> for Color {
 
 impl From<[f32; 4]> for Color {
     fn from(rgba: [f32; 4]) -> Self {
-        Self(Into::<glam::Vec4>::into(rgba).into())
+        Self(rgba.into())
     }
 }
 
@@ -398,25 +449,6 @@ impl From<[f32; 3]> for Color {
 impl From<&EventColor> for Color {
     fn from(value: &EventColor) -> Self {
         Color::new(value.r(), value.g(), value.b(), value.a())
-    }
-}
-
-impl From<u32> for Color {
-    /// Alpha must be included
-    fn from(hex: u32) -> Self {
-        let r = f32::from(((hex >> 24) & 0xFF) as u8) / 255.0;
-        let g = f32::from(((hex >> 16) & 0xFF) as u8) / 255.0;
-        let b = f32::from(((hex >> 8) & 0xFF) as u8) / 255.0;
-        let a = f32::from((hex & 0xFF) as u8) / 255.0;
-
-        Color::new(r, g, b, a)
-    }
-}
-
-impl From<Color> for u32 {
-    fn from(c: Color) -> Self {
-        // Combine the components into a single u32 value (RGBA format)
-        ((c.r8() as u32) << 24) | ((c.g8() as u32) << 16) | ((c.b8() as u32) << 8) | (c.a8() as u32)
     }
 }
 
@@ -436,34 +468,7 @@ impl TryFrom<&str> for Color {
     type Error = HexError;
 
     fn try_from(hex: &str) -> Result<Self, Self::Error> {
-        let code = hex.trim_start_matches('#');
-
-        match code.len() {
-            3 => {
-                let rr = &code.chars().nth(0).unwrap();
-                let gg = &code.chars().nth(1).unwrap();
-                let bb = &code.chars().nth(2).unwrap();
-
-                let r = try_str_to_num(&format!("{rr}{rr}"))?;
-                let g = try_str_to_num(&format!("{gg}{gg}"))?;
-                let b = try_str_to_num(&format!("{bb}{bb}"))?;
-                Ok(Self::new(r, g, b, 1.0))
-            }
-            6 => {
-                let r = try_str_to_num(&code[0..2])?;
-                let g = try_str_to_num(&code[2..4])?;
-                let b = try_str_to_num(&code[4..6])?;
-                Ok(Self::new(r, g, b, 1.0))
-            }
-            8 => {
-                let r = try_str_to_num(&code[0..2])?;
-                let g = try_str_to_num(&code[2..4])?;
-                let b = try_str_to_num(&code[4..6])?;
-                let a = try_str_to_num(&code[6..8])?;
-                Ok(Self::new(r, g, b, a))
-            }
-            _ => Err(HexError::InvalidLength),
-        }
+        Self::from_hex_str(hex)
     }
 }
 
@@ -546,7 +551,10 @@ mod tests {
             Color::from_hsv(60.0, 1.0, 0.8),
             Color::try_from("CCCC00").unwrap()
         );
-        assert_eq!(Color::from_hsv(60.0, 1.0, 0.8), Color::from(0xCCCC00FF));
+        assert_eq!(
+            Color::from_hsv(60.0, 1.0, 0.8),
+            Color::from_rgba_u32(0xCCCC00FF)
+        );
     }
 
     #[test]
@@ -630,28 +638,31 @@ mod tests {
 
     #[test]
     fn hex_int() {
-        assert_eq!(Color::from(0xFFFFFFFF).to_hex_str(), "#FFFFFFFF");
-        assert_eq!(Color::from(0x000000FF).to_hex_str(), "#000000FF");
-        assert_eq!(Color::from(0xFF0000FF).to_hex_str(), "#FF0000FF");
-        assert_eq!(Color::from(0x00FF00FF).to_hex_str(), "#00FF00FF");
-        assert_eq!(Color::from(0xFFFFFF00).to_hex_str(), "#FFFFFF00");
-        assert_eq!(Color::from(0x00000000).to_hex_str(), "#00000000");
-        assert_eq!(Color::from(0xFF000000).to_hex_str(), "#FF000000");
-        assert_eq!(Color::from(0x00FF0000).to_hex_str(), "#00FF0000");
-        assert_eq!(Color::from(0xCCCC00FF).to_hex_str(), "#CCCC00FF");
-        assert_eq!(Color::from(0xCCCC00FF), Color::from_rgb(204, 204, 0));
+        assert_eq!(Color::from_rgba_u32(0xFFFFFFFF).to_hex_str(), "#FFFFFFFF");
+        assert_eq!(Color::from_rgba_u32(0x000000FF).to_hex_str(), "#000000FF");
+        assert_eq!(Color::from_rgba_u32(0xFF0000FF).to_hex_str(), "#FF0000FF");
+        assert_eq!(Color::from_rgba_u32(0x00FF00FF).to_hex_str(), "#00FF00FF");
+        assert_eq!(Color::from_rgba_u32(0xFFFFFF00).to_hex_str(), "#FFFFFF00");
+        assert_eq!(Color::from_rgba_u32(0x00000000).to_hex_str(), "#00000000");
+        assert_eq!(Color::from_rgba_u32(0xFF000000).to_hex_str(), "#FF000000");
+        assert_eq!(Color::from_rgba_u32(0x00FF0000).to_hex_str(), "#00FF0000");
+        assert_eq!(Color::from_rgba_u32(0xCCCC00FF).to_hex_str(), "#CCCC00FF");
+        assert_eq!(
+            Color::from_rgba_u32(0xCCCC00FF),
+            Color::from_rgb(204, 204, 0)
+        );
     }
 
     #[test]
     fn darken() {
-        let mut color = Color::from(0xFFFFFFFF);
+        let mut color = Color::from_rgba_u32(0xFFFFFFFF);
         color.darken(0.5);
         assert_eq!(color.to_hex_str(), "#808080FF");
     }
 
     #[test]
     fn lighten() {
-        let mut color = Color::from(0x000000);
+        let mut color = Color::from_rgba_u32(0x000000);
         color.lighten(0.5);
         assert_eq!(color.to_hex_str(), "#80808000");
     }
@@ -663,7 +674,7 @@ mod tests {
 
     #[test]
     fn into() {
-        assert_eq!(u32::from(Color::new(0.0, 0.0, 0.0, 0.0)), 0x00000000);
-        assert_eq!(u32::from(Color::new(1.0, 1.0, 1.0, 1.0)), 0xFFFFFFFF);
+        assert_eq!(Color::new(0.0, 0.0, 0.0, 0.0).to_rgba_u32(), 0x00000000);
+        assert_eq!(Color::new(1.0, 1.0, 1.0, 1.0).to_rgba_u32(), 0xFFFFFFFF);
     }
 }

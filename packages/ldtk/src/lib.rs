@@ -281,7 +281,7 @@ impl Ldtk {
         let tiles = zip(coords, grid_indices)
             .filter(|(_, grid_index)| grid_index.as_u64().unwrap() > 0)
             .map(move |(coord, grid_index)| {
-                let position = *Vec2::new(coord[0] as f32, -(coord[1] as f32)) * *dimensions;
+                let position = Vec2::new(coord[0] as f32, -(coord[1] as f32)) * dimensions;
 
                 let grid_value = int_grid_values
                     .iter()
@@ -293,7 +293,7 @@ impl Ldtk {
 
                 IntGridTile {
                     bounds: Rect {
-                        position: position.into(),
+                        position,
                         dimensions,
                     },
                     color,

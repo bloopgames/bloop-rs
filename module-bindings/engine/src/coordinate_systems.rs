@@ -4,7 +4,7 @@ use crate::{Camera, LocalToWorld, Transform};
 
 /// Convert the given world-space `position` into the local coordinate system of the given `camera`.
 pub fn world_to_view(position: &Vec3, camera: &Camera) -> Vec3 {
-    (*camera.__view_matrix * position.extend(1f32)).truncate()
+    (camera.__view_matrix * position.extend(1f32)).truncate()
 }
 
 /// Convert the given world-space `position` into homogenous clip space of the given `camera`.
@@ -128,5 +128,5 @@ fn get_clip_to_screen_matrix(width: f32, height: f32) -> Mat4 {
 }
 
 fn get_world_to_clip_matrix(cam: &Camera) -> Mat4 {
-    *(cam.__projection_matrix * cam.__view_matrix)
+    cam.__projection_matrix * cam.__view_matrix
 }

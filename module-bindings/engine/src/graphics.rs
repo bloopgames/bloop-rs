@@ -8,11 +8,11 @@ use std::{
 };
 
 use engine_derive::component;
+use glam::Vec2;
 use snapshot_derive::{DeserializeEngine, SerializeEngine};
 
 use crate::{
     AssetId, Component, ComponentId, EcsType,
-    linalg::Vec2,
     serialize::{
         default_circle_render_num_sides, default_color_render_size, default_rect_dimensions,
         default_rect_position, default_text_render_alignment, default_text_render_font_size,
