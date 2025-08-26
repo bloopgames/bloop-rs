@@ -676,9 +676,8 @@ impl Camera {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 #[resource(engine)]
-pub struct Aspect {
-    pub width: f32,
-    pub height: f32,
+pub struct Window {
+    pub size: Vec2,
 }
 
 /// A generic storage for data from any component type. This type is used to be

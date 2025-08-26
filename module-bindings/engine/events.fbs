@@ -400,7 +400,7 @@ struct GamepadAxis {
 struct WindowResized {
   width:uint32;
   height:uint32;
-  /// If `true`, the `Aspect` resource will be updated to match the new window
+  /// If `true`, the `Window` resource will be updated to match the new window
   /// size. This should be `true` for most platforms.
   update_aspect:bool;
 }

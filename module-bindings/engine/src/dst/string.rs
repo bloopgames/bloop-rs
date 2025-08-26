@@ -15,13 +15,13 @@ pub struct EcsString {
 }
 
 impl EcsString {
-    pub fn as_str(&self) -> EcsStringRef {
+    pub fn as_str<'a>(&'a self) -> EcsStringRef<'a> {
         EcsStringRef {
             slice: self.vec.as_slice(),
         }
     }
 
-    pub fn as_mut_str(&self) -> EcsStringRef {
+    pub fn as_mut_str<'a>(&'a self) -> EcsStringRef<'a> {
         EcsStringRef {
             slice: self.vec.as_slice(),
         }
