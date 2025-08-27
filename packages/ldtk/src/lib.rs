@@ -43,13 +43,15 @@ pub struct LdtkLevel {
     #[serde(alias = "pxHei")]
     pub px_hei: u64,
     #[serde(alias = "bgColor")]
-    pub bg_color: String,
+    pub bg_color: Option<String>,
     #[serde(alias = "layerInstances")]
     layer_instances: Vec<Value>,
 }
 
+#[derive(Debug)]
 pub struct Entity<'a> {
     pub identifier: &'a str,
+    /// Position in world coordinates (unit is physical pixels)
     pub position: Vec2,
     pub size: Vec2,
     /// Values from `[0, 1]`.
@@ -62,7 +64,9 @@ pub struct AutoLayerTile {
     pub a: f32,
 }
 
+#[derive(Debug)]
 pub struct IntGridTile<'a> {
+    /// bounds in world coordinates (unit is physical pixels)
     pub bounds: Rect,
     pub color: Color,
     pub identifier: Option<&'a str>,
