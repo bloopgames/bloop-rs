@@ -359,6 +359,29 @@ impl GpuInterface {
             })
         }
     }
+
+    /// Returns true if all the texture IDs in the slice are loaded.
+    pub fn all_ids_loaded(&self, texture_ids: &[TextureId]) -> bool {
+        #[cfg(not(feature = "dynamic_wasm"))]
+        unsafe {
+            _ALL_IDS_LOADED_FN.unwrap_unchecked()(
+                (self as *const GpuInterface).cast(),
+                texture_ids.as_ptr(),
+                texture_ids.len(),
+            )
+        }
+
+        #[cfg(feature = "dynamic_wasm")]
+        unsafe {
+            crate::wasm::alloc_and_write_external_slice(texture_ids, |texture_ids_ptr| {
+                _LOAD_TEXTURE_FN.unwrap_unchecked()(
+                    (self as *const GpuInterface).cast(),
+                    texture_ids_ptr,
+                    texture_ids.len(),
+                )
+            })
+        }
+    }
 }
 
 static mut GPU_INTERFACE_CID: Option<ComponentId> = None;
@@ -381,4 +404,8 @@ impl EcsType for GpuInterface {
 
 pub static mut _LOAD_TEXTURE_FN: Option<
     unsafe extern "C" fn(*mut c_void, *const u8, usize) -> TextureId,
+> = None;
+
+pub static mut _ALL_IDS_LOADED_FN: Option<
+    unsafe extern "C" fn(*const c_void, *const TextureId, usize) -> bool,
 > = None;

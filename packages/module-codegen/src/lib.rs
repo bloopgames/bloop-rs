@@ -2439,6 +2439,7 @@ impl ParsedInfo {
             #engine_path ::_EVENT_GET_FN = transmute(get_proc_addr(c"event_get".as_ptr(), ctx));
             #engine_path ::_EVENT_SEND_FN = transmute(get_proc_addr(c"event_send".as_ptr(), ctx));
             #engine_path ::_GET_PARENT_FN = transmute(get_proc_addr(c"get_parent".as_ptr(), ctx));
+            #engine_path ::graphics::_ALL_IDS_LOADED_FN = transmute(get_proc_addr(c"graphics_all_ids_loaded".as_ptr(), ctx));
             #engine_path ::graphics::_LOAD_TEXTURE_FN = transmute(get_proc_addr(c"graphics_load_texture".as_ptr(), ctx));
             #engine_path ::_LOAD_SCENE = transmute(get_proc_addr(c"load_scene".as_ptr(), ctx));
             #engine_path ::logger::_LOG_FN = transmute(get_proc_addr(c"log".as_ptr(), ctx));

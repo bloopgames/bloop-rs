@@ -118,7 +118,7 @@ macro_rules! event_name {
 }
 
 /// The version of Void which this module is designed to support.
-pub const ENGINE_VERSION: u32 = make_api_version(0, 0, 20);
+pub const ENGINE_VERSION: u32 = make_api_version(0, 0, 21);
 
 pub const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
     ((major) << 25) | ((minor) << 15) | (patch)
