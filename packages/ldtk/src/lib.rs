@@ -58,9 +58,17 @@ pub struct Entity<'a> {
     pub pivot: Vec2,
 }
 
+#[derive(Debug)]
+pub struct TileLayerTile {
+    pub bounds: Rect,
+    pub uv_region: Rect,
+}
+
+#[derive(Debug)]
 pub struct AutoLayerTile {
     pub bounds: Rect,
     pub uv_region: Rect,
+    /// Alpha value?
     pub a: f32,
 }
 
@@ -99,6 +107,62 @@ impl Ldtk {
             .levels
             .iter()
             .find(|layer| layer.identifier == level_identifier)
+    }
+
+    /// Returns an iterator over all tiles in a layer of __type Tiles.
+    ///
+    /// Note that tile layers may have other types, like Autolayer or IntGrid.
+    pub fn tiles(
+        &self,
+        level_identifier: &str,
+        layer_identifier: &str,
+    ) -> Result<impl Iterator<Item = TileLayerTile>> {
+        let layer_instance = self.layer_instance(level_identifier, layer_identifier)?;
+
+        if layer_instance["__type"].as_str().unwrap() != "Tiles" {
+            return Err(Error::msg("layer is not type `Tiles`"));
+        }
+
+        let grid_size = layer_instance["__gridSize"].as_f64().unwrap() as f32;
+
+        let tileset_def_uid = layer_instance["__tilesetDefUid"].as_u64().unwrap();
+        let tileset_def = self
+            .root
+            .defs
+            .tilesets
+            .iter()
+            .find(|tileset| tileset.uid == tileset_def_uid)
+            .unwrap();
+
+        let uv_w = grid_size / tileset_def.px_wid as f32;
+        let uv_h = grid_size / tileset_def.px_hei as f32;
+
+        let tiles = layer_instance["gridTiles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(move |tile| {
+                let px = tile["px"].as_array().unwrap();
+
+                let src = tile["src"].as_array().unwrap();
+                let uv_x = src[0].as_f64().unwrap() as f32 / tileset_def.px_wid as f32;
+                let uv_y = src[1].as_f64().unwrap() as f32 / tileset_def.px_hei as f32;
+
+                let a = tile["a"].as_f64().unwrap() as f32;
+
+                TileLayerTile {
+                    bounds: Rect {
+                        position: Vec2::new(
+                            px[0].as_f64().unwrap() as f32,
+                            -px[1].as_f64().unwrap() as f32,
+                        ),
+                        dimensions: Vec2::splat(grid_size),
+                    },
+                    uv_region: Rect::new(uv_x, uv_y, uv_w, uv_h),
+                }
+            });
+
+        Ok(tiles)
     }
 
     /// Returns an iterator over all entities in an Entities layer.
@@ -156,16 +220,19 @@ impl Ldtk {
     /// # Errors
     ///
     /// Returns an error if the layer is not found or if the layer is not an
-    /// `AutoLayer`.
-    pub fn auto_layer_tilemap_path(
+    /// `AutoLayer` or `Tiles` layer.
+    pub fn layer_tilemap_path(
         &self,
         level_identifier: &str,
         layer_identifier: &str,
     ) -> Result<Option<String>> {
         let layer_instance = self.layer_instance(level_identifier, layer_identifier)?;
 
-        if layer_instance["__type"].as_str().unwrap() != "AutoLayer" {
-            return Err(Error::msg("layer is not type `AutoLayer`"));
+        let layer_type = layer_instance["__type"].as_str().unwrap();
+        if layer_type != "AutoLayer" && layer_type != "Tiles" {
+            return Err(Error::msg(format!(
+                "layer is not type `AutoLayer` or `Tiles`"
+            )));
         }
 
         let tileset_def_uid = layer_instance["__tilesetDefUid"].as_u64().unwrap();
