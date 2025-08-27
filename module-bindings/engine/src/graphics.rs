@@ -374,7 +374,7 @@ impl GpuInterface {
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
             crate::wasm::alloc_and_write_external_slice(texture_ids, |texture_ids_ptr| {
-                _LOAD_TEXTURE_FN.unwrap_unchecked()(
+                _ALL_IDS_LOADED_FN.unwrap_unchecked()(
                     (self as *const GpuInterface).cast(),
                     texture_ids_ptr,
                     texture_ids.len(),
