@@ -60,15 +60,26 @@ pub struct Entity<'a> {
 
 #[derive(Debug)]
 pub struct TileLayerTile {
+    /// Bounds in world coordinates (unit is physical pixels)
     pub bounds: Rect,
+    /// UV region of the tile in the tileset texture. Normalized to [0,1] with [0,0] at bottom left.
     pub uv_region: Rect,
+
+    /// Whether the tile image is flipped horizontally.
+    pub flip_x: bool,
+    /// Whether the tile image is flipped vertically.
+    pub flip_y: bool,
+    /// Alpha value
+    pub a: f32,
 }
 
 #[derive(Debug)]
 pub struct AutoLayerTile {
+    /// Bounds in world coordinates (unit is physical pixels)
     pub bounds: Rect,
+    /// UV region of the tile in the tileset texture. Normalized to [0,1] with [0,0] at bottom left.
     pub uv_region: Rect,
-    /// Alpha value?
+    /// Alpha value
     pub a: f32,
 }
 
@@ -149,6 +160,10 @@ impl Ldtk {
                 let uv_y = src[1].as_f64().unwrap() as f32 / tileset_def.px_hei as f32;
 
                 let a = tile["a"].as_f64().unwrap() as f32;
+                let flip_code = tile["f"].as_u64().unwrap() as u8;
+
+                let flip_x = flip_code == 1 || flip_code == 3;
+                let flip_y = flip_code == 2 || flip_code == 3;
 
                 TileLayerTile {
                     bounds: Rect {
@@ -159,6 +174,9 @@ impl Ldtk {
                         dimensions: Vec2::splat(grid_size),
                     },
                     uv_region: Rect::new(uv_x, uv_y, uv_w, uv_h),
+                    flip_x,
+                    flip_y,
+                    a,
                 }
             });
 
