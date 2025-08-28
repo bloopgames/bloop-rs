@@ -38,10 +38,20 @@ pub struct LdtkTileset {
 #[derive(Deserialize)]
 pub struct LdtkLevel {
     pub identifier: String,
+
+    /// World x coordinate of the level in pixels.
+    #[serde(alias = "worldX")]
+    pub world_x: f32,
+    /// World y coordinate of the level in pixels. Invert this.
+    #[serde(alias = "worldY")]
+    pub world_y: f32,
+    /// Width of the level in pixels.
     #[serde(alias = "pxWid")]
     pub px_wid: u64,
+    /// Height of the level in pixels.
     #[serde(alias = "pxHei")]
     pub px_hei: u64,
+    /// Background color of the level (can be null).
     #[serde(alias = "bgColor")]
     pub bg_color: Option<String>,
     #[serde(alias = "layerInstances")]
@@ -118,6 +128,10 @@ impl Ldtk {
             .levels
             .iter()
             .find(|layer| layer.identifier == level_identifier)
+    }
+
+    pub fn levels(&self) -> impl Iterator<Item = &LdtkLevel> {
+        self.root.levels.iter()
     }
 
     /// Returns an iterator over all tiles in a layer of __type Tiles.
