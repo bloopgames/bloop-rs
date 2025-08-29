@@ -262,9 +262,7 @@ impl Ldtk {
 
         let layer_type = layer_instance["__type"].as_str().unwrap();
         if layer_type != "AutoLayer" && layer_type != "Tiles" {
-            return Err(Error::msg(format!(
-                "layer is not type `AutoLayer` or `Tiles`"
-            )));
+            return Err(Error::msg("layer is not type `AutoLayer` or `Tiles`"));
         }
 
         let tileset_def_uid = layer_instance["__tilesetDefUid"].as_u64().unwrap();

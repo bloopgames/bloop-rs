@@ -122,6 +122,15 @@ impl<T> EcsOption<T> {
     }
 
     #[inline]
+    #[track_caller]
+    pub fn unwrap(self) -> T {
+        match self {
+            Self::Some(x) => x,
+            Self::None => panic!("Unwrap failed."),
+        }
+    }
+
+    #[inline]
     pub fn unwrap_or(self, default: T) -> T {
         match self {
             Self::Some(x) => x,
