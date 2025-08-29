@@ -173,7 +173,7 @@ pub struct SpriteAnimationFrame {
 #[derive(Debug)]
 #[repr(C)]
 pub struct SpriteAnimationTag {
-    pub name: EcsOption<EcsString>,
+    pub name: EcsString,
     pub start_frame: u32,
     pub end_frame: u32,
     pub direction: PlaybackDirection,

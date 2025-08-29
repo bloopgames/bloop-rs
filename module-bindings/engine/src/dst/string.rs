@@ -21,9 +21,9 @@ impl EcsString {
         }
     }
 
-    pub fn as_mut_str<'a>(&'a self) -> EcsStringRef<'a> {
-        EcsStringRef {
-            slice: self.vec.as_slice(),
+    pub fn as_mut_str<'a>(&'a mut self) -> EcsStringMut<'a> {
+        EcsStringMut {
+            slice: self.vec.as_mut_slice(),
         }
     }
 }
