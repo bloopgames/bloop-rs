@@ -16,6 +16,12 @@ impl Default for EngineRng {
     }
 }
 
+impl EngineRng {
+    pub fn reseed_from_u64(&mut self, seed: u64) {
+        self.0 = RngInner(Pcg32::seed_from_u64(seed));
+    }
+}
+
 impl RngCore for EngineRng {
     fn next_u32(&mut self) -> u32 {
         self.0.0.next_u32()
