@@ -66,6 +66,14 @@ pub struct Entity<'a> {
     pub size: Vec2,
     /// Values from `[0, 1]`.
     pub pivot: Vec2,
+
+    pub fields: Vec<EntityField<'a>>,
+}
+
+#[derive(Debug)]
+pub struct EntityField<'a> {
+    pub identifier: &'a str,
+    pub value: &'a str,
 }
 
 #[derive(Debug)]
@@ -241,6 +249,15 @@ impl Ldtk {
                     position,
                     size,
                     pivot,
+                    fields: entity["fieldInstances"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|field| EntityField {
+                            identifier: field["__identifier"].as_str().unwrap(),
+                            value: field["__value"].as_str().unwrap(),
+                        })
+                        .collect(),
                 }
             });
 
