@@ -56,6 +56,9 @@ pub struct LdtkLevel {
     pub bg_color: Option<String>,
     #[serde(alias = "layerInstances")]
     layer_instances: Vec<Value>,
+    //What world depth is this level in
+    #[serde(alias = "worldDepth")]
+    pub world_depth: i32,
 }
 
 #[derive(Debug)]
