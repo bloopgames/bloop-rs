@@ -11,7 +11,7 @@ pub use crate::{
     bundle,
     colors::Color,
     dst::{option::EcsOption, string::EcsString, vec::EcsVec},
-    event::input::KeyCode,
+    event::input::{KeyCode, MouseButton},
     graphics::{
         CircleRender, ColorRender, GpuInterface, ParticleRender, Rect, TextRender, TextureId,
         TextureRender,
