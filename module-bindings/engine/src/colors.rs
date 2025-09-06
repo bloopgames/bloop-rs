@@ -8,7 +8,7 @@ use engine_derive::component;
 use glam::Vec4;
 
 use crate::{
-    Component, ComponentId, EcsType,
+    Component, EcsType, EcsTypeId,
     event::{self, graphics::Color as EventColor},
 };
 

@@ -3,11 +3,7 @@
 //! for the `audio` package. Rust modules using `audio` should depend on this
 //! crate, not the `audio` crate.
 
-use std::{
-    ffi::{CStr, c_char, c_void},
-    mem::transmute,
-    ptr::NonNull,
-};
+use std::{ffi::c_void, mem::transmute, ptr::NonNull};
 
 use engine::prelude::*;
 
@@ -29,13 +25,13 @@ static mut SEND_EVENT: Option<unsafe extern "C" fn(*const u8, usize)> = None;
 
 #[allow(clippy::missing_transmute_annotations, clippy::missing_safety_doc)]
 pub unsafe fn load_module_proc_addrs(
-    get_proc_addr: unsafe extern "C" fn(*const c_char, *mut c_void) -> Option<NonNull<c_void>>,
+    get_proc_addr: unsafe extern "C" fn(*const u8, *mut c_void) -> Option<NonNull<c_void>>,
     ctx: *mut c_void,
 ) {
     unsafe {
-        SEND_EVENT = transmute(get_proc_addr(c"audio::send_event".as_ptr(), ctx));
+        SEND_EVENT = transmute(get_proc_addr(c"audio::send_event".as_ptr().cast(), ctx));
     }
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe fn set_component_id(_: &CStr, _: ComponentId) {}
+pub unsafe fn set_ecs_type_id(_: &str, _: EcsTypeId) {}

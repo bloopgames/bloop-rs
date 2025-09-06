@@ -5,7 +5,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Literal, Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{
-    DeriveInput, ExprLit, FnArg, Ident, ItemFn, Lit, LitInt, LitStr, Path, Result, Token, Type,
+    DeriveInput, FnArg, Ident, ItemFn, LitInt, LitStr, Path, Result, Type,
     parse::{Parse, ParseStream},
     parse_macro_input,
     token::Comma,
@@ -23,21 +23,25 @@ pub fn derive_ecs_type(input: TokenStream) -> TokenStream {
     let sid = LitStr::new(&ident.to_string(), Span::call_site());
 
     quote!(
-        static mut #cid: Option<ComponentId> = None;
+        static mut #cid: Option<EcsTypeId> = None;
 
         impl EcsType for #ident {
-            fn id() -> ComponentId {
-                unsafe { #cid.expect("ComponentId unassigned") }
+            fn id() -> EcsTypeId {
+                unsafe { #cid.expect("EcsTypeId unassigned") }
             }
 
-            unsafe fn set_id(id: ComponentId) {
+            unsafe fn set_id(id: EcsTypeId) {
                 unsafe {
                     #cid = Some(id);
                 }
             }
 
-            fn string_id() -> &'static std::ffi::CStr {
-                unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(concat!(module_path!(), "::", #sid, "\0").as_bytes()) }
+            fn string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid) }
+            }
+
+            fn null_terminated_string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid, '\0') }
             }
         }
     )
@@ -69,23 +73,27 @@ pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(Copy, Clone, #engine_path ::serde::Deserialize)]
         #ast
 
-        static mut #cid: Option<ComponentId> = None;
+        static mut #cid: Option<EcsTypeId> = None;
 
         impl Component for #ident {}
 
         impl EcsType for #ident {
-            fn id() -> ComponentId {
-                unsafe { #cid.expect("ComponentId unassigned") }
+            fn id() -> EcsTypeId {
+                unsafe { #cid.expect("EcsTypeId unassigned") }
             }
 
-            unsafe fn set_id(id: ComponentId) {
+            unsafe fn set_id(id: EcsTypeId) {
                 unsafe {
                     #cid = Some(id);
                 }
             }
 
-            fn string_id() -> &'static std::ffi::CStr {
-                unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(concat!(module_path!(), "::", #sid, "\0").as_bytes()) }
+            fn string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid) }
+            }
+
+            fn null_terminated_string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid, '\0') }
             }
         }
     )
@@ -123,7 +131,7 @@ pub fn resource(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(#deserialize_path, #serialize_path)]
         #ast
 
-        static mut #cid: Option<ComponentId> = None;
+        static mut #cid: Option<EcsTypeId> = None;
 
         impl Resource for #ident {
             fn new() -> Self {
@@ -132,18 +140,22 @@ pub fn resource(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         impl EcsType for #ident {
-            fn id() -> ComponentId {
-                unsafe { #cid.expect("ComponentId unassigned") }
+            fn id() -> EcsTypeId {
+                unsafe { #cid.expect("EcsTypeId unassigned") }
             }
 
-            unsafe fn set_id(id: ComponentId) {
+            unsafe fn set_id(id: EcsTypeId) {
                 unsafe {
                     #cid = Some(id);
                 }
             }
 
-            fn string_id() -> &'static std::ffi::CStr {
-                unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(concat!(module_path!(), "::", #sid, "\0").as_bytes()) }
+            fn string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid) }
+            }
+
+            fn null_terminated_string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid, '\0') }
             }
         }
     }
@@ -174,7 +186,7 @@ pub fn resource_skip_serialize(_args: TokenStream, input: TokenStream) -> TokenS
     quote! {
         #ast
 
-        static mut #cid: Option<ComponentId> = None;
+        static mut #cid: Option<EcsTypeId> = None;
 
         impl Resource for #ident {
             fn new() -> Self {
@@ -183,18 +195,22 @@ pub fn resource_skip_serialize(_args: TokenStream, input: TokenStream) -> TokenS
         }
 
         impl EcsType for #ident {
-            fn id() -> ComponentId {
-                unsafe { #cid.expect("ComponentId unassigned") }
+            fn id() -> EcsTypeId {
+                unsafe { #cid.expect("EcsTypeId unassigned") }
             }
 
-            unsafe fn set_id(id: ComponentId) {
+            unsafe fn set_id(id: EcsTypeId) {
                 unsafe {
                     #cid = Some(id);
                 }
             }
 
-            fn string_id() -> &'static std::ffi::CStr {
-                unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(concat!(module_path!(), "::", #sid, "\0").as_bytes()) }
+            fn string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid) }
+            }
+
+            fn null_terminated_string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid, '\0') }
             }
         }
 
@@ -249,7 +265,7 @@ pub fn resource_manual_serialize(_args: TokenStream, input: TokenStream) -> Toke
     quote! {
         #ast
 
-        static mut #cid: Option<ComponentId> = None;
+        static mut #cid: Option<EcsTypeId> = None;
 
         impl Resource for #ident {
             fn new() -> Self {
@@ -258,18 +274,22 @@ pub fn resource_manual_serialize(_args: TokenStream, input: TokenStream) -> Toke
         }
 
         impl EcsType for #ident {
-            fn id() -> ComponentId {
-                unsafe { #cid.expect("ComponentId unassigned") }
+            fn id() -> EcsTypeId {
+                unsafe { #cid.expect("EcsTypeId unassigned") }
             }
 
-            unsafe fn set_id(id: ComponentId) {
+            unsafe fn set_id(id: EcsTypeId) {
                 unsafe {
                     #cid = Some(id);
                 }
             }
 
-            fn string_id() -> &'static std::ffi::CStr {
-                unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(concat!(module_path!(), "::", #sid, "\0").as_bytes()) }
+            fn string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid) }
+            }
+
+            fn null_terminated_string_id() -> &'static str {
+                unsafe { ::std::concat!(module_path!(), "::", #sid, '\0') }
             }
         }
     }
@@ -376,66 +396,6 @@ pub fn deinit(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     quote! {
         #input_function
-    }
-    .into()
-}
-
-struct SetSystemEnabledInput {
-    system_enabled_bool_flag: bool,
-    func_idents: Vec<Ident>,
-}
-
-impl Parse for SetSystemEnabledInput {
-    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let bool_expr_lit: ExprLit = input.parse()?;
-
-        let system_enabled_bool_flag = match &bool_expr_lit.lit {
-            Lit::Bool(boolean) => boolean.value(),
-            _ => {
-                panic!("First parameter must be a bool for whether the system is enabled or not");
-            }
-        };
-        input.parse::<Token![,]>()?;
-        let mut func_idents = vec![input.parse::<Ident>()?];
-        while input.peek(Token![,]) {
-            input.parse::<Token![,]>()?;
-            if input.is_empty() {
-                break;
-            }
-            func_idents.push(input.parse::<Ident>()?);
-        }
-        Ok(Self {
-            system_enabled_bool_flag,
-            func_idents,
-        })
-    }
-}
-
-/// Helper around [`Engine::set_system_enabled`]
-#[proc_macro]
-pub fn set_system_enabled(input: TokenStream) -> TokenStream {
-    let SetSystemEnabledInput {
-        func_idents,
-        system_enabled_bool_flag,
-    } = parse_macro_input!(input as SetSystemEnabledInput);
-    // let func_name_str = func_ident.to_string();
-
-    let system_enabled_functions: proc_macro2::TokenStream = func_idents.iter().fold(proc_macro2::TokenStream::new(), |token_stream, system_name_ident| {
-        let system_name = system_name_ident.to_string();
-        quote! {
-            #token_stream
-
-            let system_name = ::std::ffi::CStr::from_bytes_with_nul(concat!(#system_name, "\0").as_bytes()).unwrap();
-            let full_system_name = ::engine::system::system_name_generator_c(unsafe { ::std::ffi::CStr::from_ptr(module_name()) }, system_name);
-            unsafe {
-                (::engine::_SET_SYSTEM_ENABLED_FN).unwrap_unchecked()(full_system_name.as_ptr(), enabled);
-            }
-        }
-    });
-
-    quote! {
-        let enabled = #system_enabled_bool_flag;
-        #system_enabled_functions
     }
     .into()
 }

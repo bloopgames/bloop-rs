@@ -9,7 +9,7 @@ use glam::Vec2;
 use snapshot_derive::{DeserializeEngine, SerializeEngine};
 
 use crate::{
-    ComponentId, EcsType, Resource,
+    EcsType, EcsTypeId, Resource,
     dst::{option::EcsOption, string::EcsString, vec::EcsVec},
     event::input::{KeyCode, MouseButton},
 };

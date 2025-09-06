@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    ffi::{c_char, c_void},
+    ffi::c_void,
     fmt::Debug,
     marker::PhantomData,
     mem::{MaybeUninit, transmute},
@@ -790,15 +790,25 @@ static mut BACKING_STORE_INFO: Option<
 
 #[allow(clippy::missing_transmute_annotations, clippy::missing_safety_doc)]
 pub unsafe fn load_proc_addrs(
-    get_proc_addr: unsafe extern "C" fn(*const c_char, *mut c_void) -> Option<NonNull<c_void>>,
+    get_proc_addr: unsafe extern "C" fn(*const u8, *mut c_void) -> Option<NonNull<c_void>>,
     ctx: *mut c_void,
 ) {
     unsafe {
-        BACKING_STORE_ALLOC = transmute(get_proc_addr(c"dst::backing_store_alloc".as_ptr(), ctx));
-        BACKING_STORE_REALLOC =
-            transmute(get_proc_addr(c"dst::backing_store_realloc".as_ptr(), ctx));
-        BACKING_STORE_DEALLOC =
-            transmute(get_proc_addr(c"dst::backing_store_dealloc".as_ptr(), ctx));
-        BACKING_STORE_INFO = transmute(get_proc_addr(c"dst::backing_store_info".as_ptr(), ctx));
+        BACKING_STORE_ALLOC = transmute(get_proc_addr(
+            c"dst::backing_store_alloc".as_ptr().cast(),
+            ctx,
+        ));
+        BACKING_STORE_REALLOC = transmute(get_proc_addr(
+            c"dst::backing_store_realloc".as_ptr().cast(),
+            ctx,
+        ));
+        BACKING_STORE_DEALLOC = transmute(get_proc_addr(
+            c"dst::backing_store_dealloc".as_ptr().cast(),
+            ctx,
+        ));
+        BACKING_STORE_INFO = transmute(get_proc_addr(
+            c"dst::backing_store_info".as_ptr().cast(),
+            ctx,
+        ));
     }
 }

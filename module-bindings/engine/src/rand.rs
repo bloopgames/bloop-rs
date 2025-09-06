@@ -2,7 +2,7 @@ use engine_derive::resource;
 use rand::{RngCore, SeedableRng};
 use rand_pcg::Pcg32;
 
-use crate::{ComponentId, EcsType, Resource};
+use crate::{EcsType, EcsTypeId, Resource};
 
 #[repr(transparent)]
 #[resource(engine)]

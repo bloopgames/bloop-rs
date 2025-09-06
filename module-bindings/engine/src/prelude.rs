@@ -6,7 +6,7 @@ pub use glam::{
 pub use rand::Rng;
 
 pub use crate::{
-    AssetId, Camera, CameraAspect, Component, ComponentId, EcsType, Engine, EntityId, EventReader,
+    AssetId, Camera, CameraAspect, Component, EcsType, EcsTypeId, Engine, EntityId, EventReader,
     EventWriter, FrameConstants, LocalToWorld, Mut, Ref, Resource, Transform, Viewport, Window,
     bundle,
     colors::Color,

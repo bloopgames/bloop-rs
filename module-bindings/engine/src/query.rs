@@ -1,6 +1,6 @@
 use std::{
     error::Error,
-    ffi::{CStr, c_char, c_int, c_void},
+    ffi::{c_int, c_void},
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::NonNull,
@@ -8,7 +8,7 @@ use std::{
 
 use engine_derive::all_tuples_enumerated_with_size;
 
-use crate::{Component, EntityId, Mut, Ref};
+use crate::{Component, EntityId, FfiStr, Mut, Ref};
 
 /// A query is essentially an iterator over a number of entities, based on the specified
 /// template components. For example, a query of type `Query<&Transform>` will iterate over
@@ -237,23 +237,27 @@ impl<'a, Q: QueryData> Query<'a, Q> {
     ///     }
     /// }
     /// ```
-    pub fn get_label(&self, label: &CStr) -> Option<Q::ReadOnly<'a>> {
+    pub fn get_label(&self, label: &str) -> Option<Q::ReadOnly<'a>> {
         let mut component_ptrs = MaybeUninit::<Q::DataPtrs>::uninit();
 
         #[cfg(not(feature = "dynamic_wasm"))]
         let res = unsafe {
             _GET_LABEL_FN.unwrap_unchecked()(
                 self.handle,
-                label.as_ptr(),
+                &FfiStr::new(label),
                 (&mut component_ptrs as *mut MaybeUninit<Q::DataPtrs>).cast(),
             )
         };
 
         #[cfg(feature = "dynamic_wasm")]
         let res = unsafe {
-            crate::wasm::alloc_and_write_external_slice(label.to_bytes_with_nul(), |label_ptr| {
-                crate::wasm::alloc_uninit_and_read_external(&mut component_ptrs, |ptr| {
-                    _GET_LABEL_FN.unwrap_unchecked()(self.handle, label_ptr.cast(), ptr.cast())
+            crate::wasm::alloc_and_write_external_slice(label.as_bytes(), |label_ptr| {
+                let ffi_str = FfiStr::from_raw_parts(label_ptr, label.len());
+
+                crate::wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                    crate::wasm::alloc_uninit_and_read_external(&mut component_ptrs, |ptr| {
+                        _GET_LABEL_FN.unwrap_unchecked()(self.handle, ffi_str_ptr, ptr.cast())
+                    })
                 })
             })
         };
@@ -283,23 +287,27 @@ impl<'a, Q: QueryData> Query<'a, Q> {
     ///     }
     /// }
     /// ```
-    pub fn get_label_mut(&mut self, label: &CStr) -> Option<Q::Item<'a>> {
+    pub fn get_label_mut(&mut self, label: &str) -> Option<Q::Item<'a>> {
         let mut component_ptrs = MaybeUninit::<Q::DataPtrs>::uninit();
 
         #[cfg(not(feature = "dynamic_wasm"))]
         let res = unsafe {
             _GET_LABEL_FN.unwrap_unchecked()(
                 self.handle,
-                label.as_ptr(),
+                &FfiStr::new(label),
                 (&mut component_ptrs as *mut MaybeUninit<Q::DataPtrs>).cast(),
             )
         };
 
         #[cfg(feature = "dynamic_wasm")]
         let res = unsafe {
-            crate::wasm::alloc_and_write_external_slice(label.to_bytes_with_nul(), |label_ptr| {
-                crate::wasm::alloc_uninit_and_read_external(&mut component_ptrs, |ptr| {
-                    _GET_LABEL_FN.unwrap_unchecked()(self.handle, label_ptr.cast(), ptr.cast())
+            crate::wasm::alloc_and_write_external_slice(label.as_bytes(), |label_ptr| {
+                let ffi_str = FfiStr::from_raw_parts(label_ptr, label.len());
+
+                crate::wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                    crate::wasm::alloc_uninit_and_read_external(&mut component_ptrs, |ptr| {
+                        _GET_LABEL_FN.unwrap_unchecked()(self.handle, ffi_str_ptr, ptr.cast())
+                    })
                 })
             })
         };
@@ -605,7 +613,7 @@ pub static mut _GET_ENTITY_FN: Option<
 > = None;
 
 pub static mut _GET_LABEL_FN: Option<
-    unsafe extern "C" fn(*mut c_void, *const c_char, *mut *const c_void) -> i32,
+    unsafe extern "C" fn(*mut c_void, *const FfiStr<'_>, *mut *const c_void) -> i32,
 > = None;
 
 pub static mut _FOR_EACH_FN: Option<

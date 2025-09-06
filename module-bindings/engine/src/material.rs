@@ -12,7 +12,7 @@ use log::error;
 use serde_big_array::BigArray;
 
 use crate::{
-    Component, ComponentId, EcsType, FfiVec,
+    Component, EcsType, EcsTypeId, FfiVec,
     graphics::TextureId,
     serialize::{
         default_material_parameters_data, default_material_parameters_material_id,

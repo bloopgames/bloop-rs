@@ -9,12 +9,13 @@ use std::{
 };
 
 use engine::{
+    FfiStr,
     prelude::*,
     snapshot::{Deserialize, Serialize},
 };
 
 use crate::ffi::*;
-pub use crate::ffi::{load_module_proc_addrs, set_component_id};
+pub use crate::ffi::{load_module_proc_addrs, set_ecs_type_id};
 
 mod ffi;
 
@@ -106,8 +107,7 @@ impl SpriteAnimations {
             SPRITE_ANIMATIONS_SET_ANIMATION_TAG.unwrap_unchecked()(
                 self as *const Self,
                 animation.ecs_storage_ptr().as_ptr(),
-                tag.as_ptr(),
-                tag.len(),
+                &FfiStr::new(tag),
             )
         };
 
@@ -115,12 +115,15 @@ impl SpriteAnimations {
         let res = unsafe {
             engine::wasm::update_external_mut(animation, |animation| {
                 engine::wasm::alloc_and_write_external_slice(tag.as_bytes(), |tag_ptr| {
-                    SPRITE_ANIMATIONS_SET_ANIMATION_TAG.unwrap_unchecked()(
-                        self as *const Self,
-                        animation.as_ptr(),
-                        tag_ptr,
-                        tag.len(),
-                    )
+                    let ffi_str = FfiStr::from_raw_parts(tag_ptr, tag.len());
+
+                    engine::wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                        SPRITE_ANIMATIONS_SET_ANIMATION_TAG.unwrap_unchecked()(
+                            self as *const Self,
+                            animation.as_ptr(),
+                            ffi_str_ptr,
+                        )
+                    })
                 })
             })
         };

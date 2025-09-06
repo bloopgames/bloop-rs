@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 bytemuck.workspace = true
+constcat.workspace = true
 engine-derive.workspace = true
 flatbuffers.workspace = true
 glam = { workspace = true, features = ["bytemuck", "serde"] }

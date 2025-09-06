@@ -1,6 +1,6 @@
 use std::{
     error::Error,
-    ffi::{CStr, c_void},
+    ffi::c_void,
     fmt::Display,
     num::NonZero,
     ops::{Deref, DerefMut},
@@ -12,7 +12,7 @@ use glam::Vec2;
 use snapshot_derive::{DeserializeEngine, SerializeEngine};
 
 use crate::{
-    AssetId, Component, ComponentId, EcsType,
+    AssetId, Component, EcsType, EcsTypeId, FfiStr,
     serialize::{
         default_circle_render_num_sides, default_color_render_size, default_rect_dimensions,
         default_rect_position, default_text_render_alignment, default_text_render_font_size,
@@ -343,19 +343,21 @@ impl GpuInterface {
         unsafe {
             _LOAD_TEXTURE_FN.unwrap_unchecked()(
                 (self as *mut GpuInterface).cast(),
-                path.as_ptr(),
-                path.len(),
+                &FfiStr::new(path),
             )
         }
 
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
-            crate::wasm::alloc_and_write_external_slice(path.as_bytes(), |bytes| {
-                _LOAD_TEXTURE_FN.unwrap_unchecked()(
-                    (self as *mut GpuInterface).cast(),
-                    bytes.cast(),
-                    path.len(),
-                )
+            crate::wasm::alloc_and_write_external_slice(path.as_bytes(), |path_ptr| {
+                let ffi_str = FfiStr::from_raw_parts(path_ptr, path.len());
+
+                crate::wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                    _LOAD_TEXTURE_FN.unwrap_unchecked()(
+                        (self as *mut GpuInterface).cast(),
+                        ffi_str_ptr,
+                    )
+                })
             })
         }
     }
@@ -384,26 +386,30 @@ impl GpuInterface {
     }
 }
 
-static mut GPU_INTERFACE_CID: Option<ComponentId> = None;
+static mut GPU_INTERFACE_CID: Option<EcsTypeId> = None;
 
 impl EcsType for GpuInterface {
-    fn id() -> ComponentId {
+    fn id() -> EcsTypeId {
         unsafe { GPU_INTERFACE_CID.expect("ComponentId unassigned") }
     }
 
-    unsafe fn set_id(id: ComponentId) {
+    unsafe fn set_id(id: EcsTypeId) {
         unsafe {
             GPU_INTERFACE_CID = Some(id);
         }
     }
 
-    fn string_id() -> &'static CStr {
-        c"game_asset::ecs_module::GpuInterface"
+    fn string_id() -> &'static str {
+        "game_asset::ecs_module::GpuInterface"
+    }
+
+    fn null_terminated_string_id() -> &'static str {
+        concat!("game_asset::ecs_module::GpuInterface", '\0')
     }
 }
 
 pub static mut _LOAD_TEXTURE_FN: Option<
-    unsafe extern "C" fn(*mut c_void, *const u8, usize) -> TextureId,
+    unsafe extern "C" fn(*mut c_void, *const FfiStr<'_>) -> TextureId,
 > = None;
 
 pub static mut _ALL_IDS_LOADED_FN: Option<

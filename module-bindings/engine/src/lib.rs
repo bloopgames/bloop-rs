@@ -16,20 +16,21 @@
 
 use std::{
     cmp::Ordering,
-    ffi::{CStr, c_char, c_void},
+    ffi::c_void,
     fmt::{Debug, Display, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::MaybeUninit,
     num::NonZero,
     ops::{Deref, DerefMut},
-    ptr::{self, NonNull},
+    ptr::NonNull,
     slice::{self, from_raw_parts},
     time::Duration,
 };
 
 use bytemuck::{Pod, Zeroable};
 use callable::{AsyncCompletion, Callable};
+pub use constcat;
 use engine_derive::{component, resource};
 use flatbuffers::{FlatBufferBuilder, Follow, Push, WIPOffset};
 pub use glam::{
@@ -47,7 +48,6 @@ use serialize::{
 pub use snapshot;
 use snapshot::{Deserialize, Serialize};
 use snapshot_derive::{DeserializeEngine, SerializeEngine};
-use system::system_name_generator_c;
 
 use crate::{
     colors::Color,
@@ -73,52 +73,10 @@ pub mod prelude;
 pub mod query;
 pub mod rand;
 mod serialize;
-pub mod system;
 pub mod text;
 
-#[macro_export]
-macro_rules! concat_bytes {
-    ($($s:expr),+) => {{
-        $(
-            const _: &[u8] = $s; // require constants
-        )*
-        const LEN: usize = $( $s.len() + )* 0;
-        const ARR: [u8; LEN] = {
-            use ::std::mem::MaybeUninit;
-            let mut arr: [MaybeUninit<u8>; LEN] = [MaybeUninit::zeroed(); LEN];
-            let mut base: usize = 0;
-            $({
-                let mut i = 0;
-                while i < $s.len() {
-                    arr[base + i] = MaybeUninit::new($s[i]);
-                    i += 1;
-                }
-                base += $s.len();
-            })*
-            if base != LEN { panic!("invalid length"); }
-
-            unsafe { ::std::mem::transmute(arr) }
-        };
-        &ARR
-    }};
-}
-
-/// Returns a `&'static CStr` version of a flatbuffers event name
-#[macro_export]
-macro_rules! event_name {
-    ($event:ident) => {
-        unsafe {
-            assert!($event::get_fully_qualified_name().is_ascii());
-            ::std::ffi::CStr::from_bytes_with_nul_unchecked($crate::concat_bytes!(
-                $event::get_fully_qualified_name().as_bytes(),
-                &[0]
-            ))
-        }
-    };
-}
-
 /// The version of Void which this module is designed to support.
-pub const ENGINE_VERSION: u32 = make_api_version(0, 0, 21);
+pub const ENGINE_VERSION: u32 = make_api_version(0, 0, 22);
 
 pub const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
     ((major) << 25) | ((minor) << 15) | (patch)
@@ -143,8 +101,8 @@ pub const fn api_version_compatible(version: u32) -> bool {
         && api_version_patch(ENGINE_VERSION) == api_version_patch(version)
 }
 
-/// A handle identifying a component or resource type.
-pub type ComponentId = NonZero<u16>;
+/// A handle identifying an ECS type, such as a Component or Resource.
+pub type EcsTypeId = NonZero<u16>;
 
 /// A handle identifying a loaded asset.
 #[repr(transparent)]
@@ -180,15 +138,20 @@ impl From<u32> for AssetId {
 }
 
 pub trait EcsType {
-    fn id() -> ComponentId;
+    fn id() -> EcsTypeId;
 
     /// # Safety
     ///
     /// This function sets a global static. The caller must ensure that no race
     /// conditions occur.
-    unsafe fn set_id(id: ComponentId);
+    unsafe fn set_id(id: EcsTypeId);
 
-    fn string_id() -> &'static CStr;
+    /// The namespaced, unique string ID for this `EcsType`. The ID is UTF-8,
+    /// but must not contain any NULL (`\0`) characters.
+    fn string_id() -> &'static str;
+
+    /// The UTF-8 `string_id()` ending with a null terminator (`\0`).
+    fn null_terminated_string_id() -> &'static str;
 }
 
 /// A trait representing an ECS Component. All structs which are to be used as
@@ -680,6 +643,72 @@ pub struct Window {
     pub size: Vec2,
 }
 
+/// An FFI-safe `&str`.
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct FfiStr<'a> {
+    ptr: *const u8,
+    len: usize,
+    marker: PhantomData<&'a str>,
+}
+
+impl<'a> FfiStr<'a> {
+    pub fn new(val: &'a str) -> Self {
+        Self {
+            ptr: val.as_ptr(),
+            len: val.len(),
+            marker: PhantomData,
+        }
+    }
+
+    /// # Safety
+    ///
+    /// `ptr` must be non-null, valid for reads of `len` bytes, and must point
+    /// to a valid UTF-8 string.
+    pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
+        Self {
+            ptr,
+            len,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn as_str(&self) -> &'a str {
+        unsafe { str::from_utf8_unchecked(slice::from_raw_parts(self.ptr, self.len)) }
+    }
+
+    pub fn into_str(self) -> &'a str {
+        unsafe { str::from_utf8_unchecked(slice::from_raw_parts(self.ptr, self.len)) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.ptr
+    }
+}
+
+/// Converts a null-terminated UTF-8 string pointer to a `&str`.
+///
+/// # Safety
+///
+/// Caller must provide a pointer to a valid null-terminated UTF-8 string.
+pub unsafe fn str_from_null_terminated_utf8<'a>(ptr: *const u8) -> &'a str {
+    let mut len = 0;
+
+    while unsafe { *ptr.add(len) } != 0 {
+        len += 1;
+    }
+
+    unsafe { str::from_utf8_unchecked(slice::from_raw_parts(ptr, len)) }
+}
+
 /// A generic storage for data from any component type. This type is used to be
 /// able to collect various types of component data at runtime to eventually
 /// transform to [`ComponentRef`] and pass into [`Engine::spawn`].
@@ -691,19 +720,19 @@ pub struct Window {
 pub struct ComponentData {
     /// `component_id` is an `Option` to enforce an explicit check which ensures
     /// that the component ids is valid and non-zero.
-    component_id: Option<ComponentId>,
+    component_id: Option<EcsTypeId>,
     component_data: Vec<MaybeUninit<u8>>,
 }
 
 impl ComponentData {
-    pub fn new(component_id: ComponentId, component_data: Vec<MaybeUninit<u8>>) -> Self {
+    pub fn new(component_id: EcsTypeId, component_data: Vec<MaybeUninit<u8>>) -> Self {
         Self {
             component_id: Some(component_id),
             component_data,
         }
     }
 
-    pub fn component_id(&self) -> Option<ComponentId> {
+    pub fn component_id(&self) -> Option<EcsTypeId> {
         self.component_id
     }
 }
@@ -730,14 +759,14 @@ impl<C: Component> From<C> for ComponentData {
 pub struct ComponentRef<'a> {
     /// `component_id` is an `Option` to enforce an explicit check which ensures
     /// that the component ids is valid and non-zero.
-    pub component_id: Option<ComponentId>,
+    pub component_id: Option<EcsTypeId>,
     pub component_size: usize,
     pub component_val: *const c_void,
     marker: PhantomData<&'a MaybeUninit<u8>>,
 }
 
 impl ComponentRef<'_> {
-    pub fn new(component_id: ComponentId, component_val: &[MaybeUninit<u8>]) -> Self {
+    pub fn new(component_id: EcsTypeId, component_val: &[MaybeUninit<u8>]) -> Self {
         Self {
             component_id: Some(component_id),
             component_size: component_val.len(),
@@ -858,16 +887,20 @@ pub struct Engine;
 
 impl Engine {
     /// Loads a string containing scene data into the engine
-    pub fn load_scene(scene_str: &CStr) {
+    pub fn load_scene(scene_str: &str) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
-            _LOAD_SCENE.unwrap_unchecked()(scene_str.as_ptr());
+            _LOAD_SCENE.unwrap_unchecked()(&FfiStr::new(scene_str));
         }
 
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
-            wasm::alloc_and_write_external_slice(scene_str.to_bytes_with_nul(), |scene_str| {
-                _LOAD_SCENE.unwrap_unchecked()(scene_str.cast());
+            wasm::alloc_and_write_external_slice(scene_str.as_bytes(), |scene_str_ptr| {
+                let ffi_str = FfiStr::from_raw_parts(scene_str_ptr, scene_str.len());
+
+                wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                    _LOAD_SCENE.unwrap_unchecked()(ffi_str_ptr);
+                });
             });
         }
     }
@@ -932,7 +965,7 @@ impl Engine {
     /// NOTE: commands are deferred until the end of the frame, so the removed
     /// components will still be iterated by queries on the frame that they are
     /// removed.
-    pub fn remove_components(entity_id: EntityId, component_ids: &[ComponentId]) {
+    pub fn remove_components(entity_id: EntityId, component_ids: &[EcsTypeId]) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _REMOVE_COMPONENTS_FN.unwrap_unchecked()(
@@ -964,16 +997,16 @@ impl Engine {
     /// indefinitely.
     pub fn entity_label<F, R>(entity_id: EntityId, f: F) -> R
     where
-        F: FnOnce(Option<&CStr>) -> R,
+        F: FnOnce(Option<&str>) -> R,
     {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
-            let ptr = _ENTITY_LABEL_FN.unwrap_unchecked()(entity_id);
+            let mut out_label = MaybeUninit::uninit();
 
-            let label = if ptr.is_null() {
-                None
+            let label = if _ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, &mut out_label) {
+                Some(out_label.assume_init().into_str())
             } else {
-                Some(CStr::from_ptr(ptr))
+                None
             };
 
             f(label)
@@ -981,16 +1014,24 @@ impl Engine {
 
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
-            let ptr = _ENTITY_LABEL_FN.unwrap_unchecked()(entity_id);
-            if !ptr.is_null() {
-                let len = wasm::wasm_read_external_cstr_len(ptr);
+            let mut out_label = MaybeUninit::uninit();
 
-                let mut bytes = Vec::<u8>::with_capacity(len + 1);
-                wasm::wasm_read_external_data(bytes.as_mut_ptr().cast(), ptr.cast(), len);
-                bytes.spare_capacity_mut()[len].write(0);
-                bytes.set_len(len + 1);
+            let res = wasm::alloc_and_read_external(&mut out_label, |out_label| {
+                _ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, out_label)
+            });
 
-                f(Some(CStr::from_bytes_with_nul_unchecked(&bytes)))
+            if res {
+                let label = out_label.assume_init();
+
+                let mut bytes = Vec::<u8>::with_capacity(label.len());
+                wasm::wasm_read_external_data(
+                    bytes.as_mut_ptr().cast(),
+                    label.as_ptr().cast(),
+                    label.len(),
+                );
+                bytes.set_len(label.len());
+
+                f(Some(str::from_utf8_unchecked(&bytes)))
             } else {
                 f(None)
             }
@@ -999,16 +1040,24 @@ impl Engine {
 
     /// Associates an entity with a label. An entity may only have one label,
     /// and all labels must be unique (entities cannot share identical labels).
-    pub fn set_entity_label(entity_id: EntityId, label: &CStr) {
+    pub fn set_entity_label(entity_id: EntityId, label: &str) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
-            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, label.as_ptr());
+            let ffi_str = &FfiStr::new(label);
+            let ptr = NonNull::new((ffi_str as *const FfiStr<'_>).cast_mut());
+
+            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, ptr);
         }
 
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
-            crate::wasm::alloc_and_write_external_slice(label.to_bytes_with_nul(), |label| {
-                _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, label.cast());
+            crate::wasm::alloc_and_write_external_slice(label.as_bytes(), |label_ptr| {
+                let ffi_str = FfiStr::from_raw_parts(label_ptr, label.len());
+
+                wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                    let ptr = NonNull::new((ffi_str_ptr).cast_mut());
+                    _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, ptr);
+                });
             });
         }
     }
@@ -1016,7 +1065,7 @@ impl Engine {
     /// Clears an entity's label.
     pub fn clear_entity_label(entity_id: EntityId) {
         unsafe {
-            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, ptr::null());
+            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, None);
         }
     }
 
@@ -1146,11 +1195,11 @@ impl Engine {
         }
     }
 
-    pub fn set_fully_qualified_system_enabled(fully_qualified_system_name: &CStr, enabled: bool) {
+    pub fn set_fully_qualified_system_enabled(fully_qualified_system_name: &str, enabled: bool) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(
-                fully_qualified_system_name.as_ptr(),
+                &FfiStr::new(fully_qualified_system_name),
                 enabled,
             );
         }
@@ -1158,34 +1207,21 @@ impl Engine {
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
             wasm::alloc_and_write_external_slice(
-                fully_qualified_system_name.to_bytes_with_nul(),
-                |name| {
-                    _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(name.cast(), enabled);
+                fully_qualified_system_name.as_bytes(),
+                |fully_qualified_system_name_ptr| {
+                    let ffi_str = FfiStr::from_raw_parts(
+                        fully_qualified_system_name_ptr,
+                        fully_qualified_system_name.len(),
+                    );
+
+                    wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                        _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(ffi_str_ptr, enabled);
+                    });
                 },
             );
         }
     }
-
-    /// Allows a system to be turned off or on. The `set_system_enabled` macro
-    /// is generally preferred, but that only accepts system functions as
-    /// parameters, so if you need to pass in the system name by it's &`CStr`
-    /// value, this is the correct API.
-    pub fn set_system_enabled(
-        system_name: &CStr,
-        enabled: bool,
-        module_name_function: ModuleNameFn,
-    ) {
-        Self::set_fully_qualified_system_enabled(
-            &system_name_generator_c(
-                unsafe { CStr::from_ptr(module_name_function()) },
-                system_name,
-            ),
-            enabled,
-        );
-    }
 }
-
-pub type ModuleNameFn = unsafe extern "C" fn() -> *const c_char;
 
 pub struct EventReader<T> {
     handle: *const c_void,
@@ -1588,7 +1624,7 @@ impl<T> Drop for Mut<'_, T> {
 // update the codegen crate responsible for generating the FFI boilerplate code,
 // as well as the `get_core_proc_addr` function in the `c_api` mod.
 
-pub static mut _LOAD_SCENE: Option<unsafe extern "C" fn(scene_str: *const c_char)> = None;
+pub static mut _LOAD_SCENE: Option<unsafe extern "C" fn(scene_str: *const FfiStr<'_>)> = None;
 
 // spawning
 pub static mut _SPAWN: Option<
@@ -1602,12 +1638,16 @@ pub static mut _ADD_COMPONENTS_FN: Option<
 > = None;
 
 pub static mut _REMOVE_COMPONENTS_FN: Option<
-    unsafe extern "C" fn(EntityId, *const ComponentId, usize),
+    unsafe extern "C" fn(EntityId, *const EcsTypeId, usize),
 > = None;
 
-pub static mut _ENTITY_LABEL_FN: Option<unsafe extern "C" fn(EntityId) -> *const c_char> = None;
+pub static mut _ENTITY_LABEL_FN: Option<
+    unsafe extern "C" fn(EntityId, *mut MaybeUninit<FfiStr<'_>>) -> bool,
+> = None;
 
-pub static mut _SET_ENTITY_LABEL_FN: Option<unsafe extern "C" fn(EntityId, *const c_char)> = None;
+pub static mut _SET_ENTITY_LABEL_FN: Option<
+    unsafe extern "C" fn(EntityId, Option<NonNull<FfiStr<'_>>>),
+> = None;
 
 // events
 pub static mut _EVENT_COUNT_FN: Option<unsafe extern "C" fn(*const c_void) -> usize> = None;
@@ -1618,10 +1658,10 @@ pub static mut _EVENT_GET_FN: Option<
 
 pub static mut _EVENT_SEND_FN: Option<unsafe extern "C" fn(*const c_void, *const u8, usize)> = None;
 
-pub static mut _CALL_FN: Option<unsafe extern "C" fn(ComponentId, *const c_void, usize)> = None;
+pub static mut _CALL_FN: Option<unsafe extern "C" fn(EcsTypeId, *const c_void, usize)> = None;
 
 pub static mut _CALL_ASYNC_FN: Option<
-    unsafe extern "C" fn(ComponentId, *const c_void, usize, *const c_void, usize),
+    unsafe extern "C" fn(EcsTypeId, *const c_void, usize, *const c_void, usize),
 > = None;
 
 // parentage
@@ -1633,7 +1673,7 @@ pub static mut _GET_PARENT_FN: Option<
 > = None;
 
 // system meta
-pub static mut _SET_SYSTEM_ENABLED_FN: Option<unsafe extern "C" fn(*const c_char, bool)> = None;
+pub static mut _SET_SYSTEM_ENABLED_FN: Option<unsafe extern "C" fn(*const FfiStr<'_>, bool)> = None;
 
 #[cfg(feature = "dynamic_wasm")]
 pub mod wasm {
@@ -1644,7 +1684,6 @@ pub mod wasm {
     unsafe extern "C" {
         pub fn wasm_write_external_data(dst: *mut c_void, src: *const c_void, bytes: usize);
         pub fn wasm_read_external_data(dst: *mut c_void, src: *const c_void, bytes: usize);
-        pub fn wasm_read_external_cstr_len(ptr: *const c_char) -> usize;
         pub fn wasm_alloc_external_data(size: usize, align: usize) -> *mut c_void;
         pub fn wasm_dealloc_external_data(ptr: *mut c_void, size: usize, align: usize);
     }
@@ -1855,13 +1894,13 @@ pub mod ffi {
 
 #[repr(u8)]
 #[derive(Debug)]
-pub enum ComponentType {
+pub enum EcsTypeType {
     AsyncCompletion,
     Component,
     Resource,
 }
 
-impl ComponentType {
+impl EcsTypeType {
     pub fn from_u8(val: u8) -> Option<Self> {
         let variant = match val {
             0 => Self::AsyncCompletion,

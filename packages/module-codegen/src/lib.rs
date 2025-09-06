@@ -900,7 +900,7 @@ impl ParsedInfo {
         let gen_module_info = self.gen_module_info(add_no_mangle);
         let gen_resources = self.gen_resources(add_no_mangle, dynamic_wasm);
         let gen_functions = if gen_empty_functions {
-            gen_functions(add_no_mangle)
+            self.gen_functions(add_no_mangle)
         } else {
             TokenStream::new()
         };
@@ -1059,49 +1059,114 @@ impl ParsedInfo {
     }
 
     fn gen_components(&self, add_no_mangle: bool, dynamic_wasm: bool) -> TokenStream {
-        let gen_set_component_id = self.gen_set_component_id(add_no_mangle);
+        let gen_set_ecs_type_id = self.gen_set_ecs_type_id(add_no_mangle);
         let gen_component_deserialize_json = if dynamic_wasm {
             self.gen_component_deserialize_json_wasm()
         } else {
             self.gen_component_deserialize_json(add_no_mangle)
         };
-        let gen_component_string_id = self.gen_component_string_id(add_no_mangle);
-        let gen_component_size = self.gen_component_size(add_no_mangle);
-        let gen_component_align = self.gen_component_align(add_no_mangle);
-        let gen_component_type = self.gen_component_type(add_no_mangle);
-        let gen_component_async_completion_callable =
-            self.gen_component_async_completion_callable(add_no_mangle);
+        let gen_ecs_types_len = self.gen_ecs_types_len(add_no_mangle);
+        let gen_ecs_type_string_id = self.gen_ecs_type_string_id(add_no_mangle);
+        let gen_ecs_type_size = self.gen_ecs_type_size(add_no_mangle);
+        let gen_ecs_type_align = self.gen_ecs_type_align(add_no_mangle);
+        let gen_ecs_type_type = self.gen_ecs_type_type(add_no_mangle);
+        let gen_ecs_type_async_completion_callable =
+            self.gen_ecs_type_async_completion_callable(add_no_mangle);
 
         quote! {
-            #gen_set_component_id
+            #gen_set_ecs_type_id
             #gen_component_deserialize_json
-            #gen_component_string_id
-            #gen_component_size
-            #gen_component_align
-            #gen_component_type
-            #gen_component_async_completion_callable
+            #gen_ecs_types_len
+            #gen_ecs_type_string_id
+            #gen_ecs_type_size
+            #gen_ecs_type_align
+            #gen_ecs_type_type
+            #gen_ecs_type_async_completion_callable
         }
     }
 
     fn gen_module_name(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
-        let module_name = LitCStr::new(
-            &CString::new(&*self.module_name).unwrap(),
-            self.module_name.span(),
-        );
+
+        let module_name = &self.module_name;
+
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub unsafe extern "C" fn module_name() -> *const ::std::ffi::c_char {
-                #module_name.as_ptr()
+            pub extern "C" fn module_name() -> *const u8 {
+                concat!(#module_name, '\0').as_ptr()
             }
         }
     }
 
-    fn gen_component_string_id(&self, add_no_mangle: bool) -> TokenStream {
+    fn gen_ecs_types_len(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
+
+        let len = self.ecs_types.len();
+
+        quote! {
+            #optional_no_mangle
+            #allow_attr
+            pub extern "C" fn ecs_types_len() -> usize {
+                #len
+            }
+        }
+    }
+
+    fn gen_ecs_type_string_id(&self, add_no_mangle: bool) -> TokenStream {
+        let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
+        let allow_attr = allow_attr();
+
+        let (index, type_path) = self
+            .ecs_types
+            .iter()
+            .map(|ecs_type| &ecs_type.path)
+            .enumerate()
+            .split();
+
+        let type_err = self.ecs_types.iter().map(|ecs_type| {
+            let ident = &ecs_type.path.segments.last().unwrap().ident;
+
+            let mut err = "Interior bytes of ".to_owned();
+            err.push_str(&quote!(#ident).to_string());
+            err.push_str("::string_id() cannot be NUL");
+            err
+        });
+
+        quote! {
+            #optional_no_mangle
+            #allow_attr
+            pub unsafe extern "C" fn ecs_type_string_id(index: usize) -> *const u8 {
+                match index {
+                    #(#index => {
+                        assert!(valid_string_id(#type_path::string_id()), #type_err);
+                        #type_path::null_terminated_string_id().as_ptr()
+                    })*
+                    _ => ::std::unreachable!(),
+                }
+            }
+
+            #[allow(unused)]
+            const fn valid_string_id(s: &str) -> bool {
+                let bytes = s.as_bytes();
+                let mut i = 0;
+                while i < (bytes.len() - 1) {
+                    if bytes[i] == b'\0' {
+                        return false;
+                    }
+                    i += 1;
+                }
+                true
+            }
+        }
+    }
+
+    fn gen_ecs_type_size(&self, add_no_mangle: bool) -> TokenStream {
+        let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
+        let allow_attr = allow_attr();
+
         let (index, type_path) = self
             .ecs_types
             .iter()
@@ -1112,198 +1177,130 @@ impl ParsedInfo {
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub unsafe extern "C" fn component_string_id(index: usize) -> *const ::std::ffi::c_char {
+            pub unsafe extern "C" fn ecs_type_size(index: usize) -> usize {
                 match index {
-                    #(#index => #type_path::string_id().as_ptr(),)*
-                    _ => ::std::ptr::null(),
+                    #(#index => ::std::mem::size_of::<#type_path>(),)*
+                    _ => ::std::unreachable!(),
                 }
             }
         }
     }
 
-    fn gen_component_size(&self, add_no_mangle: bool) -> TokenStream {
+    fn gen_ecs_type_align(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
 
-        let body = if self.ecs_types.is_empty() {
-            quote! {
-                ::std::process::abort();
-            }
-        } else {
-            let mut ecs_type_path = self
-                .ecs_types
-                .iter()
-                .map(|ecs_type_info| &ecs_type_info.path);
-            let first_ecs_type_path = ecs_type_path.next().unwrap();
-            quote! {
-                let string_id = ::std::ffi::CStr::from_ptr(string_id);
-
-                if string_id == #first_ecs_type_path::string_id() {
-                    ::std::mem::size_of::<#first_ecs_type_path>()
-                } #(else if string_id == #ecs_type_path::string_id() {
-                    ::std::mem::size_of::<#ecs_type_path>()
-                })* else {
-                    ::std::process::abort();
-                }
-            }
-        };
+        let (index, type_path) = self
+            .ecs_types
+            .iter()
+            .map(|ecs_type| &ecs_type.path)
+            .enumerate()
+            .split();
 
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub unsafe extern "C" fn component_size(string_id: *const ::std::ffi::c_char) -> usize {
-                #body
-            }
-        }
-    }
-
-    fn gen_component_align(&self, add_no_mangle: bool) -> TokenStream {
-        let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
-        let allow_attr = allow_attr();
-
-        let body = if self.ecs_types.is_empty() {
-            quote! {
-                ::std::process::abort();
-            }
-        } else {
-            let mut ecs_type_path = self
-                .ecs_types
-                .iter()
-                .map(|ecs_type_info| &ecs_type_info.path);
-            let first_ecs_type_path = ecs_type_path.next().unwrap();
-            quote! {
-                let string_id = ::std::ffi::CStr::from_ptr(string_id);
-
-                if string_id == #first_ecs_type_path::string_id() {
-                    ::std::mem::align_of::<#first_ecs_type_path>()
-                } #(else if string_id == #ecs_type_path::string_id() {
-                    ::std::mem::align_of::<#ecs_type_path>()
-                })* else {
-                    ::std::process::abort();
+            pub unsafe extern "C" fn ecs_type_align(index: usize) -> usize {
+                match index {
+                    #(#index => ::std::mem::align_of::<#type_path>(),)*
+                    _ => ::std::unreachable!(),
                 }
             }
-        };
-
-        quote! {
-            #optional_no_mangle
-            #allow_attr
-            pub unsafe extern "C" fn component_align(string_id: *const ::std::ffi::c_char) -> usize {
-                #body
-            }
         }
     }
 
-    fn gen_component_type(&self, add_no_mangle: bool) -> TokenStream {
+    fn gen_ecs_type_type(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
         let engine_path = &self.engine_package_path;
 
-        let body = if self.ecs_types.is_empty() {
-            quote! {
-                ::std::process::abort();
-            }
-        } else {
-            let type_enum_prefix: syn::Path = parse_quote! { #engine_path ::ComponentType };
-            let mut ecs_type_iter = self.ecs_types.iter();
+        let type_enum_prefix: syn::Path = parse_quote! { #engine_path ::EcsTypeType };
 
-            let first_ecs_type = ecs_type_iter.next().unwrap();
-            let first_ecs_type_path = &first_ecs_type.path;
-
-            let first_ecs_type_variant = first_ecs_type.ecs_type.to_ecs_type_variant();
-            let first_ecs_type_variant_path: syn::Path =
-                parse_quote!(#type_enum_prefix::#first_ecs_type_variant);
-
-            let (ecs_type_path, ecs_type_variant_path) = ecs_type_iter
-                .map(|ecs_type_info| -> (_, syn::Path) {
-                    let ecs_type_variant = ecs_type_info.ecs_type.to_ecs_type_variant();
-                    (
-                        &ecs_type_info.path,
-                        parse_quote!(#type_enum_prefix::#ecs_type_variant),
-                    )
-                })
-                .split();
-
-            quote! {
-                let string_id = ::std::ffi::CStr::from_ptr(string_id);
-
-                if string_id == #first_ecs_type_path::string_id() {
-                    #first_ecs_type_variant_path
-                } #(else if string_id == #ecs_type_path::string_id() {
-                    #ecs_type_variant_path
-                })* else {
-                    ::std::process::abort();
-                }
-            }
-        };
+        let (index, type_type) = self
+            .ecs_types
+            .iter()
+            .map(|ecs_type| ecs_type.ecs_type.to_ecs_type_variant())
+            .enumerate()
+            .split();
 
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub unsafe extern "C" fn component_type(string_id: *const ::std::ffi::c_char) -> #engine_path ::ComponentType {
-                #body
+            pub unsafe extern "C" fn ecs_type_type(index: usize) -> #engine_path ::EcsTypeType {
+                match index {
+                    #(#index => #type_enum_prefix :: #type_type,)*
+                    _ => ::std::unreachable!(),
+                }
             }
         }
     }
 
-    fn gen_component_async_completion_callable(&self, add_no_mangle: bool) -> TokenStream {
+    fn gen_ecs_type_async_completion_callable(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
-        let ecs_types = self
+
+        let index = self
             .ecs_types
             .iter()
-            .filter_map(|ecs_type| {
-                if let EcsType::AsyncCompletion { callable } = &ecs_type.ecs_type {
-                    Some((&ecs_type.path, callable))
+            .enumerate()
+            .filter_map(|(index, ecs_type)| {
+                if let EcsType::AsyncCompletion { .. } = &ecs_type.ecs_type {
+                    Some(index)
                 } else {
                     None
                 }
-            })
-            .collect::<Vec<_>>();
+            });
 
-        let body = if ecs_types.is_empty() {
-            quote! {
-                ::std::process::abort();
+        let callable_path = self.ecs_types.iter().filter_map(|ecs_type| {
+            if let EcsType::AsyncCompletion { callable } = &ecs_type.ecs_type {
+                Some(callable)
+            } else {
+                None
             }
-        } else {
-            let mut ecs_types = ecs_types.into_iter();
-            let (first_ecs_struct_path, first_ecs_callable_path) = ecs_types.next().unwrap();
-            let (struct_path, callable_path) = ecs_types.split();
+        });
 
-            quote! {
-                let string_id = ::std::ffi::CStr::from_ptr(string_id);
+        let type_err = self.ecs_types.iter().filter_map(|ecs_type| {
+            if let EcsType::AsyncCompletion { callable } = &ecs_type.ecs_type {
+                let ident = &callable.segments.last().unwrap().ident;
 
-                if string_id == #first_ecs_struct_path::string_id() {
-                    #first_ecs_callable_path::string_id().as_ptr()
-                } #(else if string_id == #struct_path::string_id() {
-                    #callable_path::string_id().as_ptr()
-                })* else {
-                    ::std::process::abort();
-                }
+                let mut err = "Interior bytes of ".to_owned();
+                err.push_str(&quote!(#ident).to_string());
+                err.push_str("::string_id() cannot be NUL");
+
+                Some(err)
+            } else {
+                None
             }
-        };
+        });
 
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub unsafe extern "C" fn component_async_completion_callable(
-                string_id: *const ::std::ffi::c_char,
-            ) -> *const ::std::ffi::c_char
+            pub unsafe extern "C" fn ecs_type_async_completion_callable(
+                index: usize,
+            ) -> *const u8
             {
-                #body
+                match index {
+                    #(#index => {
+                        assert!(valid_string_id(#callable_path::string_id()), #type_err);
+                        #callable_path::null_terminated_string_id().as_ptr()
+                    })*
+                    _ => ::std::unreachable!(),
+                }
             }
         }
     }
 
-    fn gen_set_component_id(&self, add_no_mangle: bool) -> TokenStream {
+    fn gen_set_ecs_type_id(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
         let engine_path = &self.engine_package_path;
 
         let module_set_id_fns = self.imported_modules.iter().fold(quote!(), |acc, path| {
-            quote! { #acc :: #path ::set_component_id(string_id, id); }
+            quote! { #acc :: #path ::set_ecs_type_id(string_id, id); }
         });
 
-        let mut components = self
+        let mut ecs_types = self
             .systems
             .iter()
             .flat_map(|s| &s.inputs)
@@ -1322,21 +1319,19 @@ impl ParsedInfo {
             .chain(&self.imported_ecs_types)
             .collect::<Vec<_>>();
 
-        components.sort_by_key(|a| a.to_token_stream().to_string());
-        components.dedup();
+        ecs_types.sort_by_key(|a| a.to_token_stream().to_string());
+        ecs_types.dedup();
 
-        let body = if components.is_empty() {
+        let body = if ecs_types.is_empty() {
             quote! {}
         } else {
-            let mut components_iter = components.iter();
-            let first_component = components_iter.next().unwrap();
+            let mut ecs_types_iter = ecs_types.iter();
+            let first_ecs_type = ecs_types_iter.next().unwrap();
             quote! {
-                let string_id = ::std::ffi::CStr::from_ptr(string_id);
-
-                if string_id == #first_component::string_id() {
-                    unsafe { #first_component::set_id(id); }
-                } #(else if string_id == #components_iter::string_id() {
-                    unsafe { #components_iter::set_id(id); }
+                if string_id == #first_ecs_type::string_id() {
+                    unsafe { #first_ecs_type::set_id(id); }
+                } #(else if string_id == #ecs_types_iter::string_id() {
+                    unsafe { #ecs_types_iter::set_id(id); }
                 })*
 
                 #module_set_id_fns
@@ -1346,7 +1341,9 @@ impl ParsedInfo {
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub unsafe extern "C" fn set_component_id(string_id: *const ::std::ffi::c_char, id: #engine_path ::ComponentId) {
+            pub unsafe extern "C" fn set_ecs_type_id(string_id: *const #engine_path ::FfiStr<'_>, id: #engine_path ::EcsTypeId) {
+                let string_id = unsafe { string_id.read().into_str() };
+
                 #body
             }
         }
@@ -1386,7 +1383,7 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn resource_init(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *mut ::std::ffi::c_void,
             ) -> i32 {
                 #body
@@ -1442,7 +1439,7 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn resource_init(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *mut ::std::ffi::c_void,
             ) -> i32 {
                 #body
@@ -1500,7 +1497,7 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn resource_deserialize(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *mut ::std::ffi::c_void,
                 reader: *mut ::std::ffi::c_void,
                 read: unsafe extern "C" fn(
@@ -1571,7 +1568,7 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn resource_deserialize(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *mut ::std::ffi::c_void,
                 serialized_data_ptr: *const ::std::mem::MaybeUninit<u8>,
                 serialized_data_len: usize,
@@ -1602,8 +1599,7 @@ impl ParsedInfo {
             let mut components = components.into_iter();
             let first_component = components.next().unwrap();
             quote! {
-                let json_str_bytes = ::std::slice::from_raw_parts(json_ptr, json_len);
-                let json_str = ::std::str::from_utf8_unchecked(json_str_bytes);
+                let json_str = json.into_str();
 
                 let res: Result<_, Box<dyn ::std::error::Error>> = if ecs_type_id == #first_component::id() {
                     match #engine_path ::serde_json::from_str(&json_str) {
@@ -1638,11 +1634,12 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn component_deserialize_json(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *mut ::std::ffi::c_void,
-                json_ptr: *const u8,
-                json_len: usize,
+                json: *const #engine_path ::FfiStr<'_>,
             ) -> i32 {
+                let json = json.read();
+
                 #body
             }
         }
@@ -1669,13 +1666,13 @@ impl ParsedInfo {
             let mut components = components.into_iter();
             let first_component = components.next().unwrap();
             quote! {
-                let mut json_str_bytes = Vec::<u8>::with_capacity(json_len);
+                let mut json_str_bytes = Vec::<u8>::with_capacity(json.len());
                 #engine_path ::wasm::wasm_read_external_data(
                     json_str_bytes.spare_capacity_mut().as_mut_ptr().cast(),
-                    json_ptr.cast(),
-                    json_len,
+                    json.as_ptr().cast(),
+                    json.len(),
                 );
-                json_str_bytes.set_len(json_len);
+                json_str_bytes.set_len(json.len());
 
                 let json_str = ::std::str::from_utf8_unchecked(&json_str_bytes);
 
@@ -1722,11 +1719,12 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn component_deserialize_json(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *mut ::std::ffi::c_void,
-                json_ptr: *const u8,
-                json_len: usize,
+                json: *const #engine_path ::FfiStr<'_>,
             ) -> i32 {
+                let json = json.read();
+
                 #body
             }
         }
@@ -1782,7 +1780,7 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn resource_serialize(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *const ::std::ffi::c_void,
                 writer: *mut ::std::ffi::c_void,
                 write: unsafe extern "C" fn(
@@ -1848,7 +1846,7 @@ impl ParsedInfo {
             #optional_no_mangle
             #allow_attr
             pub unsafe extern "C" fn resource_serialize(
-                ecs_type_id: #engine_path ::ComponentId,
+                ecs_type_id: #engine_path ::EcsTypeId,
                 val: *const ::std::ffi::c_void,
             ) -> i32 {
                 #body
@@ -1983,6 +1981,7 @@ impl ParsedInfo {
     fn gen_system_name(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
+
         let (index, system_ident) = self
             .systems
             .iter()
@@ -1993,11 +1992,10 @@ impl ParsedInfo {
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub extern "C" fn system_name(system_index: usize) -> *const ::std::ffi::c_char {
-
+            pub extern "C" fn system_name(system_index: usize) -> *const u8 {
                 match system_index {
-                    #(#index => #system_ident.as_ptr(),)*
-                    _ => ::std::process::abort(),
+                    #(#index => #system_ident.as_ptr().cast(),)*
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2019,7 +2017,7 @@ impl ParsedInfo {
             pub extern "C" fn system_is_once(system_index: usize) -> bool {
                 match system_index {
                     #(#index => #is_system_once,)*
-                    _ => ::std::process::abort(),
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2059,7 +2057,7 @@ impl ParsedInfo {
             pub extern "C" fn #system_fn(system_index: usize) -> unsafe extern "C" fn(*const *const ::std::ffi::c_void) -> i32 {
                 match system_index {
                     #(#index => #function_name,)*
-                    _ => ::std::process::abort(),
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2082,7 +2080,7 @@ impl ParsedInfo {
             pub extern "C" fn system_args_len(system_index: usize) -> usize {
                 match system_index {
                     #(#index => #system_inputs_length,)*
-                    _ => ::std::process::abort(),
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2140,6 +2138,7 @@ impl ParsedInfo {
     fn gen_system_arg_component(&self, add_no_mangle: bool) -> TokenStream {
         let optional_no_mangle = generate_optional_no_mangle(add_no_mangle);
         let allow_attr = allow_attr();
+
         let (index, system_args) = self
             .systems
             .iter()
@@ -2151,7 +2150,7 @@ impl ParsedInfo {
                     .filter_map(|(index, system_input_info)| {
                         if matches!(system_input_info.arg_type, ArgType::DataAccessDirect) {
                             let ident = system_input_info.path.clone();
-                            Some((index, quote! { #ident::string_id().as_ptr()}))
+                            Some((index, quote! { #ident::null_terminated_string_id().as_ptr().cast::<u8>() }))
                         } else {
                             None
                         }
@@ -2161,7 +2160,7 @@ impl ParsedInfo {
                 quote! {
                     match arg_index {
                         #(#index => #arg_types,)*
-                        _ => ::std::process::abort(),
+                        _ => ::std::unreachable!(),
                     }
                 }
             })
@@ -2171,10 +2170,10 @@ impl ParsedInfo {
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub extern "C" fn system_arg_component(system_index: usize, arg_index: usize) -> *const ::std::ffi::c_char {
+            pub extern "C" fn system_arg_component(system_index: usize, arg_index: usize) -> *const u8 {
                 match system_index {
                     #(#index => #system_args,)*
-                    _ => ::std::process::abort(),
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2197,10 +2196,10 @@ impl ParsedInfo {
                                         Some(index) => input[..(index - 1)].to_string(),
                                         None => input
                                     };
-                                    let input_generic_removed = format_ident!("{}", input_generic_removed);
+                                    let input_generic_removed = syn::parse_str::<syn::Path>(&input_generic_removed).unwrap();
                                     Some((
                                         index,
-                                        quote! { #engine_path ::event_name!(#input_generic_removed).as_ptr()},
+                                        quote! { #engine_path ::constcat::concat!(#input_generic_removed ::get_fully_qualified_name(), '\0').as_ptr() },
                                     ))
                                 }
                                 _ => None,
@@ -2210,18 +2209,19 @@ impl ParsedInfo {
                     quote! {
                         match arg_index {
                             #(#index => #arg_types,)*
-                            _ => ::std::process::abort(),
+                            _ => ::std::unreachable!(),
                         }
                     }
                 })
                 .enumerate().split();
+
         quote! {
             #optional_no_mangle
             #allow_attr
-            pub extern "C" fn system_arg_event(system_index: usize, arg_index: usize) -> *const ::std::ffi::c_char {
+            pub unsafe extern "C" fn system_arg_event(system_index: usize, arg_index: usize) -> *const u8 {
                 match system_index {
                     #(#index => #system_args,)*
-                    _ => ::std::process::abort(),
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2257,7 +2257,7 @@ impl ParsedInfo {
                 let token_stream = quote! {
                     match arg_index {
                         #(#index => #arg_types,)*
-                        _ => ::std::process::abort(),
+                        _ => ::std::unreachable!(),
                     }
                 };
                 (outer_index, token_stream)
@@ -2270,7 +2270,7 @@ impl ParsedInfo {
             pub extern "C" fn system_query_args_len(system_index: usize, arg_index: usize) -> usize {
                 match system_index {
                     #(#index => #system_args,)*
-                    _ => ::std::process::abort(),
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2316,7 +2316,7 @@ impl ParsedInfo {
                             let token_stream = quote! {
                                 match query_index {
                                     #(#index => #query_types,)*
-                                    _ => ::std::process::abort(),
+                                    _ => ::std::unreachable!(),
                                 }
                             };
                             Some((middle_index, token_stream))
@@ -2329,7 +2329,7 @@ impl ParsedInfo {
                 let token_stream = quote! {
                     match arg_index {
                         #(#index => #arg_types,)*
-                        _ => ::std::process::abort(),
+                        _ => ::std::unreachable!(),
                     }
                 };
                 (outer_index, token_stream)
@@ -2345,7 +2345,7 @@ impl ParsedInfo {
             ) -> #engine_path ::ArgType {
                 match system_index {
                     #(#index => #system_args,)*
-                    _ => ::std::process::abort(),
+                    _ => ::std::unreachable!(),
                 }
             }
         }
@@ -2379,8 +2379,8 @@ impl ParsedInfo {
                                 .split();
                             let token_stream = quote! {
                                 match query_index {
-                                    #(#index => #query_idents::string_id().as_ptr(),)*
-                                    _ => ::std::process::abort(),
+                                    #(#index => #query_idents::null_terminated_string_id().as_ptr(),)*
+                                    _ => ::std::unreachable!(),
                                 }
                             };
                             Some((middle_index, token_stream))
@@ -2393,7 +2393,7 @@ impl ParsedInfo {
                 let token_stream = quote! {
                     match arg_index {
                         #(#index => #arg_types,)*
-                        _ => ::std::process::abort(),
+                        _ => ::std::unreachable!(),
                     }
                 };
                 (outer_index, token_stream)
@@ -2407,7 +2407,7 @@ impl ParsedInfo {
                 system_index: usize,
                 arg_index: usize,
                 query_index: usize,
-            ) -> *const ::std::ffi::c_char {
+            ) -> *const u8 {
                 match system_index {
                     #(#index => #system_args,)*
                     _ => std::process::abort(),
@@ -2428,32 +2428,32 @@ impl ParsedInfo {
         let fn_body = quote! {
             use ::std::mem::transmute;
 
-            #engine_path ::_ADD_COMPONENTS_FN = transmute(get_proc_addr(c"add_components".as_ptr(), ctx));
-            #engine_path ::_CALL_FN = transmute(get_proc_addr(c"call".as_ptr(), ctx));
-            #engine_path ::_CALL_ASYNC_FN = transmute(get_proc_addr(c"call_async".as_ptr(), ctx));
-            #engine_path ::callable::_COMPLETION_COUNT_FN = transmute(get_proc_addr(c"completion_count".as_ptr(), ctx));
-            #engine_path ::callable::_COMPLETION_GET_FN = transmute(get_proc_addr(c"completion_get".as_ptr(), ctx));
-            #engine_path ::_DESPAWN = transmute(get_proc_addr(c"despawn".as_ptr(), ctx));
-            #engine_path ::_ENTITY_LABEL_FN = transmute(get_proc_addr(c"entity_label".as_ptr(), ctx));
-            #engine_path ::_EVENT_COUNT_FN = transmute(get_proc_addr(c"event_count".as_ptr(), ctx));
-            #engine_path ::_EVENT_GET_FN = transmute(get_proc_addr(c"event_get".as_ptr(), ctx));
-            #engine_path ::_EVENT_SEND_FN = transmute(get_proc_addr(c"event_send".as_ptr(), ctx));
-            #engine_path ::_GET_PARENT_FN = transmute(get_proc_addr(c"get_parent".as_ptr(), ctx));
-            #engine_path ::graphics::_ALL_IDS_LOADED_FN = transmute(get_proc_addr(c"graphics_all_ids_loaded".as_ptr(), ctx));
-            #engine_path ::graphics::_LOAD_TEXTURE_FN = transmute(get_proc_addr(c"graphics_load_texture".as_ptr(), ctx));
-            #engine_path ::_LOAD_SCENE = transmute(get_proc_addr(c"load_scene".as_ptr(), ctx));
-            #engine_path ::logger::_LOG_FN = transmute(get_proc_addr(c"log".as_ptr(), ctx));
-            #engine_path ::_SET_ENTITY_LABEL_FN = transmute(get_proc_addr(c"set_entity_label".as_ptr(), ctx));
-            #engine_path ::_SET_PARENT_FN = transmute(get_proc_addr(c"set_parent".as_ptr(), ctx));
-            #engine_path ::_SET_SYSTEM_ENABLED_FN = transmute(get_proc_addr(c"set_system_enabled".as_ptr(), ctx));
-            #engine_path ::_SPAWN = transmute(get_proc_addr(c"spawn".as_ptr(), ctx));
-            #engine_path ::query::_FOR_EACH_FN = transmute(get_proc_addr(c"query_for_each".as_ptr(), ctx));
-            #engine_path ::query::_GET_FN = transmute(get_proc_addr(c"query_get".as_ptr(), ctx));
-            #engine_path ::query::_GET_ENTITY_FN = transmute(get_proc_addr(c"query_get_entity".as_ptr(), ctx));
-            #engine_path ::query::_GET_LABEL_FN = transmute(get_proc_addr(c"query_get_label".as_ptr(), ctx));
-            #engine_path ::query::_LEN_FN = transmute(get_proc_addr(c"query_len".as_ptr(), ctx));
-            #engine_path ::query::_PAR_FOR_EACH_FN = transmute(get_proc_addr(c"query_par_for_each".as_ptr(), ctx));
-            #engine_path ::_REMOVE_COMPONENTS_FN = transmute(get_proc_addr(c"remove_components".as_ptr(), ctx));
+            #engine_path ::_ADD_COMPONENTS_FN = transmute(get_proc_addr(c"add_components".as_ptr().cast(), ctx));
+            #engine_path ::_CALL_FN = transmute(get_proc_addr(c"call".as_ptr().cast(), ctx));
+            #engine_path ::_CALL_ASYNC_FN = transmute(get_proc_addr(c"call_async".as_ptr().cast(), ctx));
+            #engine_path ::callable::_COMPLETION_COUNT_FN = transmute(get_proc_addr(c"completion_count".as_ptr().cast(), ctx));
+            #engine_path ::callable::_COMPLETION_GET_FN = transmute(get_proc_addr(c"completion_get".as_ptr().cast(), ctx));
+            #engine_path ::_DESPAWN = transmute(get_proc_addr(c"despawn".as_ptr().cast(), ctx));
+            #engine_path ::_ENTITY_LABEL_FN = transmute(get_proc_addr(c"entity_label".as_ptr().cast(), ctx));
+            #engine_path ::_EVENT_COUNT_FN = transmute(get_proc_addr(c"event_count".as_ptr().cast(), ctx));
+            #engine_path ::_EVENT_GET_FN = transmute(get_proc_addr(c"event_get".as_ptr().cast(), ctx));
+            #engine_path ::_EVENT_SEND_FN = transmute(get_proc_addr(c"event_send".as_ptr().cast(), ctx));
+            #engine_path ::_GET_PARENT_FN = transmute(get_proc_addr(c"get_parent".as_ptr().cast(), ctx));
+            #engine_path ::graphics::_ALL_IDS_LOADED_FN = transmute(get_proc_addr(c"graphics_all_ids_loaded".as_ptr().cast(), ctx));
+            #engine_path ::graphics::_LOAD_TEXTURE_FN = transmute(get_proc_addr(c"graphics_load_texture".as_ptr().cast(), ctx));
+            #engine_path ::_LOAD_SCENE = transmute(get_proc_addr(c"load_scene".as_ptr().cast(), ctx));
+            #engine_path ::logger::_LOG_FN = transmute(get_proc_addr(c"log".as_ptr().cast(), ctx));
+            #engine_path ::_SET_ENTITY_LABEL_FN = transmute(get_proc_addr(c"set_entity_label".as_ptr().cast(), ctx));
+            #engine_path ::_SET_PARENT_FN = transmute(get_proc_addr(c"set_parent".as_ptr().cast(), ctx));
+            #engine_path ::_SET_SYSTEM_ENABLED_FN = transmute(get_proc_addr(c"set_system_enabled".as_ptr().cast(), ctx));
+            #engine_path ::_SPAWN = transmute(get_proc_addr(c"spawn".as_ptr().cast(), ctx));
+            #engine_path ::query::_FOR_EACH_FN = transmute(get_proc_addr(c"query_for_each".as_ptr().cast(), ctx));
+            #engine_path ::query::_GET_FN = transmute(get_proc_addr(c"query_get".as_ptr().cast(), ctx));
+            #engine_path ::query::_GET_ENTITY_FN = transmute(get_proc_addr(c"query_get_entity".as_ptr().cast(), ctx));
+            #engine_path ::query::_GET_LABEL_FN = transmute(get_proc_addr(c"query_get_label".as_ptr().cast(), ctx));
+            #engine_path ::query::_LEN_FN = transmute(get_proc_addr(c"query_len".as_ptr().cast(), ctx));
+            #engine_path ::query::_PAR_FOR_EACH_FN = transmute(get_proc_addr(c"query_par_for_each".as_ptr().cast(), ctx));
+            #engine_path ::_REMOVE_COMPONENTS_FN = transmute(get_proc_addr(c"remove_components".as_ptr().cast(), ctx));
             #engine_path ::dst::vec::load_proc_addrs(get_proc_addr, ctx);
 
             #module_proc_addr_fns
@@ -2462,7 +2462,7 @@ impl ParsedInfo {
         if dynamic_wasm {
             quote! {
                 unsafe extern "C" {
-                    fn get_proc_addr(_: *const ::std::ffi::c_char, _: *mut ::std::ffi::c_void) -> Option<::std::ptr::NonNull<::std::ffi::c_void>>;
+                    fn get_proc_addr(_: *const u8, _: *mut ::std::ffi::c_void) -> Option<::std::ptr::NonNull<::std::ffi::c_void>>;
                 }
 
                 #optional_no_mangle
@@ -2478,7 +2478,7 @@ impl ParsedInfo {
                 #optional_no_mangle
                 #allow_attr
                 pub unsafe extern "C" fn load_proc_addrs(
-                    get_proc_addr: unsafe extern "C" fn(*const ::std::ffi::c_char, *mut ::std::ffi::c_void) -> Option<::std::ptr::NonNull<::std::ffi::c_void>>,
+                    get_proc_addr: unsafe extern "C" fn(*const u8, *mut ::std::ffi::c_void) -> Option<::std::ptr::NonNull<::std::ffi::c_void>>,
                     ctx: *mut ::std::ffi::c_void,
                 ) {
                     #fn_body
@@ -2535,23 +2535,32 @@ impl ParsedInfo {
             }
         }
     }
-}
 
-fn gen_functions(add_no_mangle: bool) -> TokenStream {
-    let optional_add_no_mangle = generate_optional_no_mangle(add_no_mangle);
-    let allow_attrs = allow_attr();
+    fn gen_functions(&self, add_no_mangle: bool) -> TokenStream {
+        let optional_add_no_mangle = generate_optional_no_mangle(add_no_mangle);
+        let allow_attrs = allow_attr();
 
-    quote! {
-        #optional_add_no_mangle
-        #allow_attrs
-        pub extern "C" fn function_name(index: usize) -> Option<::std::ptr::NonNull<::std::ffi::c_char>> {
-            None
-        }
+        quote! {
+            #optional_add_no_mangle
+            #allow_attrs
+            pub extern "C" fn functions_len(
+            ) -> usize {
+                0
+            }
 
-        #optional_add_no_mangle
-        #allow_attrs
-        pub extern "C" fn function_fn(index: usize) -> Option<::std::ptr::NonNull<::std::ffi::c_void>> {
-            None
+            #optional_add_no_mangle
+            #allow_attrs
+            pub unsafe extern "C" fn function_name(
+                index: usize,
+            ) -> *const u8 {
+                ::std::unreachable!()
+            }
+
+            #optional_add_no_mangle
+            #allow_attrs
+            pub unsafe extern "C" fn function_fn(index: usize) -> ::std::ptr::NonNull<::std::ffi::c_void> {
+                ::std::unreachable!()
+            }
         }
     }
 }

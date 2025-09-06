@@ -7,7 +7,7 @@ use std::{
 
 use flatbuffers::{Follow, Push};
 
-use crate::{ComponentId, EcsType};
+use crate::{EcsType, EcsTypeId};
 
 pub type TaskId = u32;
 
@@ -194,8 +194,8 @@ impl AsyncCompletionValue {
     }
 }
 
-pub static mut _COMPLETION_COUNT_FN: Option<unsafe extern "C" fn(ComponentId) -> usize> = None;
+pub static mut _COMPLETION_COUNT_FN: Option<unsafe extern "C" fn(EcsTypeId) -> usize> = None;
 
 pub static mut _COMPLETION_GET_FN: Option<
-    unsafe extern "C" fn(ComponentId, usize) -> AsyncCompletionValue,
+    unsafe extern "C" fn(EcsTypeId, usize) -> AsyncCompletionValue,
 > = None;

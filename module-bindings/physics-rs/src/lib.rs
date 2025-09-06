@@ -4,7 +4,7 @@
 //! depend on this crate, not the `physics` crate.
 
 use std::{
-    ffi::{CStr, c_char, c_void},
+    ffi::c_void,
     mem::{MaybeUninit, transmute},
     ptr::NonNull,
 };
@@ -28,21 +28,25 @@ pub enum Collider {
     },
 }
 
-static mut COLLIDER_CID: Option<ComponentId> = None;
+static mut COLLIDER_CID: Option<EcsTypeId> = None;
 
 impl EcsType for Collider {
-    fn id() -> ComponentId {
+    fn id() -> EcsTypeId {
         unsafe { COLLIDER_CID.expect("ComponentId unassigned") }
     }
 
-    unsafe fn set_id(id: ComponentId) {
+    unsafe fn set_id(id: EcsTypeId) {
         unsafe {
             COLLIDER_CID = Some(id);
         }
     }
 
-    fn string_id() -> &'static CStr {
-        c"physics::Collider"
+    fn string_id() -> &'static str {
+        "physics::Collider"
+    }
+
+    fn null_terminated_string_id() -> &'static str {
+        concat!("physics::Collider", '\0')
     }
 }
 
@@ -66,21 +70,25 @@ impl Default for ColliderDebugRender {
     }
 }
 
-static mut COLLIDER_DEBUG_RENDER_CID: Option<ComponentId> = None;
+static mut COLLIDER_DEBUG_RENDER_CID: Option<EcsTypeId> = None;
 
 impl EcsType for ColliderDebugRender {
-    fn id() -> ComponentId {
+    fn id() -> EcsTypeId {
         unsafe { COLLIDER_DEBUG_RENDER_CID.expect("ComponentId unassigned") }
     }
 
-    unsafe fn set_id(id: ComponentId) {
+    unsafe fn set_id(id: EcsTypeId) {
         unsafe {
             COLLIDER_DEBUG_RENDER_CID = Some(id);
         }
     }
 
-    fn string_id() -> &'static CStr {
-        c"physics::Collider"
+    fn string_id() -> &'static str {
+        "physics::ColliderDebugRender"
+    }
+
+    fn null_terminated_string_id() -> &'static str {
+        concat!("physics::ColliderDebugRender", '\0')
     }
 }
 
@@ -572,20 +580,26 @@ static mut CAST_SHAPES: Option<
 
 #[allow(clippy::missing_transmute_annotations, clippy::missing_safety_doc)]
 pub unsafe fn load_module_proc_addrs(
-    get_proc_addr: unsafe extern "C" fn(*const c_char, *mut c_void) -> Option<NonNull<c_void>>,
+    get_proc_addr: unsafe extern "C" fn(*const u8, *mut c_void) -> Option<NonNull<c_void>>,
     ctx: *mut c_void,
 ) {
     unsafe {
-        CLOSEST_POINTS = transmute(get_proc_addr(c"physics::closest_points".as_ptr(), ctx));
-        DISTANCE = transmute(get_proc_addr(c"physics::distance".as_ptr(), ctx));
-        CONTACT = transmute(get_proc_addr(c"physics::contact".as_ptr(), ctx));
-        INTERSECTION_TEST = transmute(get_proc_addr(c"physics::intersection_test".as_ptr(), ctx));
-        CAST_SHAPES = transmute(get_proc_addr(c"physics::cast_shapes".as_ptr(), ctx));
+        CLOSEST_POINTS = transmute(get_proc_addr(
+            c"physics::closest_points".as_ptr().cast(),
+            ctx,
+        ));
+        DISTANCE = transmute(get_proc_addr(c"physics::distance".as_ptr().cast(), ctx));
+        CONTACT = transmute(get_proc_addr(c"physics::contact".as_ptr().cast(), ctx));
+        INTERSECTION_TEST = transmute(get_proc_addr(
+            c"physics::intersection_test".as_ptr().cast(),
+            ctx,
+        ));
+        CAST_SHAPES = transmute(get_proc_addr(c"physics::cast_shapes".as_ptr().cast(), ctx));
     }
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe fn set_component_id(string_id: &CStr, id: ComponentId) {
+pub unsafe fn set_ecs_type_id(string_id: &str, id: EcsTypeId) {
     if string_id == Collider::string_id() {
         unsafe {
             Collider::set_id(id);
