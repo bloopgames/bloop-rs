@@ -17,7 +17,6 @@ pub use crate::{
         TextureRender,
     },
     input::InputState,
-    material::{DefaultMaterials, MaterialId, MaterialParameters, ShaderTemplateId},
     query::Query,
     rand::EngineRng,
     text::{TextAlignment, TextId},
