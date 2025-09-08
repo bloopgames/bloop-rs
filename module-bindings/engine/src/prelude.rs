@@ -17,6 +17,7 @@ pub use crate::{
         TextureRender,
     },
     input::InputState,
+    log,
     material::{DefaultMaterials, MaterialId, MaterialParameters, ShaderTemplateId},
     query::Query,
     rand::EngineRng,
