@@ -17,6 +17,7 @@ pub use crate::{
         TextureRender,
     },
     input::InputState,
+    log,
     query::Query,
     rand::EngineRng,
     text::{TextAlignment, TextId},
