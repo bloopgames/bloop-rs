@@ -42,8 +42,8 @@ pub use serde;
 pub use serde_json;
 use serialize::{
     default_camera_aspect, default_camera_clear_color, default_camera_projection_matrix,
-    default_camera_render_order,
-    default_camera_view_matrix, default_transform_pivot, default_transform_scale,
+    default_camera_render_order, default_camera_view_matrix, default_transform_pivot,
+    default_transform_scale,
 };
 pub use snapshot;
 use snapshot::{Deserialize, Serialize};
@@ -74,7 +74,7 @@ mod serialize;
 pub mod text;
 
 /// The version of Void which this module is designed to support.
-pub const ENGINE_VERSION: u32 = make_api_version(0, 0, 22);
+pub const ENGINE_VERSION: u32 = make_api_version(0, 0, 23);
 
 pub const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
     ((major) << 25) | ((minor) << 15) | (patch)
