@@ -26,16 +26,6 @@ struct Transform {
   rotation:float;
 }
 
-namespace Physics;
-
-struct BoxCollision {
-  entities:[uint64:2];
-}
-
-struct CircleCollision {
-  entities:[uint64:2];
-}
-
 namespace Graphics;
 
 struct Color {
@@ -70,37 +60,6 @@ struct DrawLine {
   color:Color;
 }
 
-table NewText {
-  id: uint32;
-  asset_path: string;
-  set_up_watcher: bool;
-}
-
-enum TextMessageFormatType : int {
-  Json = 0,
-  Toml = 1,
-  Csv = 2,
-  Text = 3,
-}
-
-table TextLoaded {
-  id: uint32;
-  asset_path: string;
-  raw_text: string;
-  format: TextMessageFormatType;
-  watcher_set_up: bool;
-}
-
-table TextReloaded {
-  id: uint32;
-}
-
-table TextFailed {
-  id: uint32;
-  asset_path: string;
-  reason: string;
-}
-
 enum TextAlignment : ubyte {
   Left,
   Center,
@@ -115,32 +74,6 @@ table DrawText {
   color:Color;
   font_size:float;
   text_alignment:TextAlignment;
-}
-
-struct NewPipeline {
-  id: uint32;
-  material_id: uint32;
-}
-
-struct PipelineLoaded {
-  id: uint32;
-  material_id: uint32;
-}
-
-table PipelineFailed {
-  id: uint32;
-  material_id: uint32;
-  reason: string;
-}
-
-struct ReloadPipeline {
-  id: uint32;
-  material_id: uint32;
-}
-
-struct MaterialIdFromTextId {
-  material_id: uint32;
-  text_id: uint32;
 }
 
 namespace Input;
@@ -412,8 +345,6 @@ struct WindowFocused {
 struct WindowUnfocused {
   window_id:uint8;
 }
-
-namespace Network;
 
 namespace ParticleEffects;
 

@@ -9,8 +9,7 @@ use serde::{
 use crate::{
     Camera, CameraAspect, FfiOption, Transform,
     colors::Color,
-    graphics::{CircleRender, ColorRender, Rect, TextRender, TextureId},
-    material::{MaterialId, MaterialParameters, TEXTURE_LIMIT, UNIFORM_LIMIT},
+    graphics::{CircleRender, ColorRender, Rect, TextRender},
     text::TextAlignment,
 };
 
@@ -50,10 +49,6 @@ pub(crate) fn default_camera_clear_color() -> Color {
     Camera::default().clear_color
 }
 
-pub(crate) fn default_camera_render_target_texture_id() -> FfiOption<u32> {
-    Camera::default().render_target_texture_id
-}
-
 pub(crate) fn default_camera_render_order() -> i32 {
     Camera::default().render_order
 }
@@ -64,18 +59,6 @@ pub(crate) fn default_camera_view_matrix() -> Mat4 {
 
 pub(crate) fn default_camera_projection_matrix() -> Mat4 {
     Camera::default().__projection_matrix
-}
-
-pub(crate) fn default_material_parameters_material_id() -> MaterialId {
-    MaterialParameters::default().material_id()
-}
-
-pub(crate) fn default_material_parameters_textures() -> [Option<TextureId>; TEXTURE_LIMIT] {
-    MaterialParameters::default().textures
-}
-
-pub(crate) fn default_material_parameters_data() -> [f32; UNIFORM_LIMIT] {
-    MaterialParameters::default().data
 }
 
 pub(crate) fn default_rect_position() -> Vec2 {

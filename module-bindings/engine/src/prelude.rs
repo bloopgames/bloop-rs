@@ -18,7 +18,6 @@ pub use crate::{
     },
     input::InputState,
     log,
-    material::{DefaultMaterials, MaterialId, MaterialParameters, ShaderTemplateId},
     query::Query,
     rand::EngineRng,
     text::{TextAlignment, TextId},

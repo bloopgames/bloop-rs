@@ -393,7 +393,6 @@ impl ParsedInfo {
                 parse_quote!(::engine::graphics::TextRender),
                 parse_quote!(::engine::graphics::ColorRender),
                 parse_quote!(::engine::graphics::TextureRender),
-                parse_quote!(::engine::material::MaterialParameters),
             ]
         } else {
             Vec::new()
