@@ -297,7 +297,7 @@ fn write_ffi(out_dir: &Path, input_path: &Path, builder: &FfiBuilder<'_>) -> Res
     };
 
     // Naive search for any usage of `Callable` types.
-    let re = Regex::new(r"Engine::call.*::<(.+)>").unwrap();
+    let re = Regex::new(r".call.*::<(.+)>").unwrap();
     for capture in re.captures_iter(&input) {
         let callable_path = capture.get(1).unwrap().as_str();
 
@@ -355,6 +355,7 @@ impl EcsType {
 enum ArgType {
     Completion,
     DataAccessDirect,
+    Engine,
     EventReader { input: syn::Path },
     EventWriter { input: syn::Path },
     Query { inputs: Vec<SystemInputInfo> },
@@ -455,6 +456,7 @@ impl SystemInputInfo {
     pub fn is_component(&self) -> bool {
         self.path.segments.last().unwrap().ident != "Completion"
             && self.path.segments.last().unwrap().ident != "Query"
+            && self.path.segments.last().unwrap().ident != "Engine"
             && self.path.segments.last().unwrap().ident != "EventReader"
             && self.path.segments.last().unwrap().ident != "EventWriter"
     }
@@ -684,11 +686,25 @@ impl ParsedInfo {
                             arg_type: ArgType::Completion,
                             mutable: false,
                         },
-                        "Ref" => SystemInputInfo {
-                            path: parse_ref(&ident, &component.path),
-                            arg_type: ArgType::DataAccessDirect,
-                            mutable: false,
-                        },
+                        "Ref" => {
+                            let path = parse_ref(&ident, &component.path);
+
+                            let arg_type = if path
+                                .segments
+                                .last()
+                                .is_some_and(|segment| segment.ident == "Engine")
+                            {
+                                ArgType::Engine
+                            } else {
+                                ArgType::DataAccessDirect
+                            };
+
+                            SystemInputInfo {
+                                path,
+                                arg_type,
+                                mutable: false,
+                            }
+                        }
                         "Mut" => SystemInputInfo {
                             path: parse_ref(&ident, &component.path),
                             arg_type: ArgType::DataAccessDirect,
@@ -1904,7 +1920,7 @@ impl ParsedInfo {
             let args = system.inputs.iter().enumerate().fold(quote! {}, |token_stream, (index, input)| {
                 let index = index as isize;
                 let this_arg = match input.arg_type {
-                    ArgType::Completion => quote! { #engine_path ::callable::Completion::new(), },
+                    ArgType::Completion => quote! { #engine_path ::callable::Completion::new(*data.offset(#index)), },
                     ArgType::DataAccessDirect => {
                         let ident = input.path.clone();
 
@@ -1915,6 +1931,10 @@ impl ParsedInfo {
                         } else {
                             quote! { #engine_path ::Ref::new(#pointer), }
                         }
+                    },
+                    ArgType::Engine => {
+                        let pointer = quote! { ::std::ptr::NonNull::new_unchecked(*data.offset(#index) as *mut #engine_path ::Engine) };
+                        quote! { #engine_path ::Ref::new(#pointer), }
                     },
                     ArgType::EventReader { .. } => quote! { #engine_path ::EventReader::new(*data.offset(#index)), },
                     ArgType::EventWriter { .. } => quote! { #engine_path ::EventWriter::new(*data.offset(#index)), },
@@ -2104,6 +2124,7 @@ impl ParsedInfo {
                                 parse_quote!(DataAccessMut)
                             }
                             ArgType::DataAccessDirect => parse_quote!(DataAccessRef),
+                            ArgType::Engine => parse_quote!(Engine),
                             ArgType::EventReader { .. } => parse_quote!(EventReader),
                             ArgType::EventWriter { .. } => parse_quote!(EventWriter),
                             ArgType::Query { .. } => parse_quote!(Query),
@@ -2149,7 +2170,10 @@ impl ParsedInfo {
                     .filter_map(|(index, system_input_info)| {
                         if matches!(system_input_info.arg_type, ArgType::DataAccessDirect) {
                             let ident = system_input_info.path.clone();
-                            Some((index, quote! { #ident::null_terminated_string_id().as_ptr().cast::<u8>() }))
+                            Some((
+                                index,
+                                quote! { #ident::null_terminated_string_id().as_ptr() },
+                            ))
                         } else {
                             None
                         }

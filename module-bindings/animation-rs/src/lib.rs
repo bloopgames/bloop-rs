@@ -36,24 +36,32 @@ pub struct SpriteAnimationId(NonZero<u32>);
 pub struct SpriteAnimations;
 
 impl SpriteAnimations {
-    pub fn load_aseprite_animation(this: &mut Mut<'_, Self>, path: &str) -> SpriteAnimationId {
+    pub fn load_aseprite_animation(
+        this: &mut Mut<'_, Self>,
+        engine: &Engine,
+        path: &str,
+    ) -> SpriteAnimationId {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             SPRITE_ANIMATIONS_LOAD_ASEPRITE_ANIMATION.unwrap_unchecked()(
+                engine,
                 this.ecs_storage_ptr().as_ptr(),
-                path.as_ptr(),
-                path.len(),
+                &FfiStr::new(path),
             )
         }
 
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
             engine::wasm::alloc_and_write_external_slice(path.as_bytes(), |path_ptr| {
-                SPRITE_ANIMATIONS_LOAD_ASEPRITE_ANIMATION.unwrap_unchecked()(
-                    this.ecs_storage_ptr().as_ptr(),
-                    path_ptr.cast(),
-                    path.len(),
-                )
+                let ffi_str = FfiStr::from_raw_parts(path_ptr, path.len());
+
+                engine::wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                    SPRITE_ANIMATIONS_LOAD_ASEPRITE_ANIMATION.unwrap_unchecked()(
+                        engine,
+                        this.ecs_storage_ptr().as_ptr(),
+                        ffi_str_ptr,
+                    )
+                })
             })
         }
     }

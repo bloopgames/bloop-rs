@@ -34,9 +34,9 @@ impl EcsType for SpriteAnimations {
 
 pub static mut SPRITE_ANIMATIONS_LOAD_ASEPRITE_ANIMATION: Option<
     unsafe extern "C" fn(
+        engine: *const Engine,
         sprite_animations: *mut SpriteAnimations,
-        path_bytes: *const u8,
-        path_len: usize,
+        path: *const FfiStr<'_>,
     ) -> SpriteAnimationId,
 > = None;
 

@@ -1,4 +1,5 @@
 use std::{
+    ffi::c_void,
     marker::PhantomData,
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
@@ -75,18 +76,19 @@ impl<T: Copy + 'static> From<T> for Pod<T> {
 }
 
 pub struct Completion<F> {
+    handle: *const c_void,
     marker: PhantomData<F>,
 }
 
 impl<F> Completion<F> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl<F> Default for Completion<F> {
-    fn default() -> Self {
+    /// # Safety
+    ///
+    /// `Completion` should only be constructed from a valid pointer retrieved
+    /// from a corresponding `Completion` parameter, received in an ECS system's
+    /// FFI function.
+    pub unsafe fn new(handle: *const c_void) -> Self {
         Self {
+            handle,
             marker: PhantomData,
         }
     }
@@ -94,7 +96,7 @@ impl<F> Default for Completion<F> {
 
 impl<F: AsyncCompletion> Completion<F> {
     pub fn len_fb(&self) -> usize {
-        unsafe { _COMPLETION_COUNT_FN.unwrap_unchecked()(F::id()) }
+        unsafe { _COMPLETION_COUNT_FN.unwrap_unchecked()(F::id(), self.handle) }
     }
 
     pub fn is_empty_fb(&self) -> bool {
@@ -110,7 +112,7 @@ impl<F: AsyncCompletion> Completion<F> {
         <F::UserData<'_> as Follow<'_>>::Inner,
     )> {
         unsafe {
-            let completion = _COMPLETION_GET_FN.unwrap_unchecked()(F::id(), index);
+            let completion = _COMPLETION_GET_FN.unwrap_unchecked()(F::id(), index, self.handle);
 
             if completion.return_value_ptr.is_null() || completion.user_data_ptr.is_null() {
                 return None;
@@ -194,8 +196,10 @@ impl AsyncCompletionValue {
     }
 }
 
-pub static mut _COMPLETION_COUNT_FN: Option<unsafe extern "C" fn(EcsTypeId) -> usize> = None;
+pub static mut _COMPLETION_COUNT_FN: Option<
+    unsafe extern "C" fn(EcsTypeId, ctx: *const c_void) -> usize,
+> = None;
 
 pub static mut _COMPLETION_GET_FN: Option<
-    unsafe extern "C" fn(EcsTypeId, usize) -> AsyncCompletionValue,
+    unsafe extern "C" fn(EcsTypeId, usize, ctx: *const c_void) -> AsyncCompletionValue,
 > = None;
