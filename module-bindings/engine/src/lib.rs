@@ -928,7 +928,7 @@ impl Engine {
     pub fn load_scene(&self, scene_str: &str) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
-            _LOAD_SCENE.unwrap_unchecked()(&FfiStr::new(scene_str), (self as *const Self).cast());
+            _LOAD_SCENE.unwrap_unchecked()((self as *const Self).cast(), &FfiStr::new(scene_str));
         }
 
         #[cfg(feature = "dynamic_wasm")]
@@ -937,7 +937,7 @@ impl Engine {
                 let ffi_str = FfiStr::from_raw_parts(scene_str_ptr, scene_str.len());
 
                 wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
-                    _LOAD_SCENE.unwrap_unchecked()(ffi_str_ptr, (self as *const Self).cast());
+                    _LOAD_SCENE.unwrap_unchecked()((self as *const Self).cast(), ffi_str_ptr);
                 });
             });
         }
@@ -953,9 +953,9 @@ impl Engine {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _SPAWN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 components.as_ptr(),
                 components.len(),
-                (self as *const Self).cast(),
             )
             .expect("could not spawn entity")
         }
@@ -964,9 +964,9 @@ impl Engine {
         unsafe {
             wasm::alloc_components_external(components, |components| {
                 _SPAWN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
                     components.as_ptr(),
                     components.len(),
-                    (self as *const Self).cast(),
                 )
                 .expect("could not spawn entity")
             })
@@ -979,7 +979,7 @@ impl Engine {
     /// entity will still be iterated by queries on the frame it is despawned.
     pub fn despawn(&self, entity_id: EntityId) {
         unsafe {
-            _DESPAWN.unwrap_unchecked()(entity_id, (self as *const Self).cast());
+            _DESPAWN.unwrap_unchecked()((self as *const Self).cast(), entity_id);
         }
     }
 
@@ -992,10 +992,10 @@ impl Engine {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _ADD_COMPONENTS_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 entity_id,
                 components.as_ptr(),
                 components.len(),
-                (self as *const Self).cast(),
             );
         }
 
@@ -1003,10 +1003,10 @@ impl Engine {
         unsafe {
             wasm::alloc_components_external(components, |components| {
                 _ADD_COMPONENTS_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
                     entity_id,
                     components.as_ptr(),
                     components.len(),
-                    (self as *const Self).cast(),
                 );
             });
         }
@@ -1021,10 +1021,10 @@ impl Engine {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _REMOVE_COMPONENTS_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 entity_id,
                 component_ids.as_ptr(),
                 component_ids.len(),
-                (self as *const Self).cast(),
             );
         }
 
@@ -1032,10 +1032,10 @@ impl Engine {
         unsafe {
             wasm::alloc_and_write_external_slice(component_ids, |ptr| {
                 _REMOVE_COMPONENTS_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
                     entity_id,
                     ptr.cast(),
                     component_ids.len(),
-                    (self as *const Self).cast(),
                 );
             });
         }
@@ -1058,9 +1058,9 @@ impl Engine {
             let mut out_label = MaybeUninit::uninit();
 
             let label = if _ENTITY_LABEL_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 entity_id,
                 &mut out_label,
-                (self as *const Self).cast(),
             ) {
                 Some(out_label.assume_init().into_str())
             } else {
@@ -1076,9 +1076,9 @@ impl Engine {
 
             let res = wasm::alloc_and_read_external(&mut out_label, |out_label| {
                 _ENTITY_LABEL_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
                     entity_id,
                     out_label,
-                    (self as *const Self).cast(),
                 )
             });
 
@@ -1108,7 +1108,7 @@ impl Engine {
             let ffi_str = &FfiStr::new(label);
             let ptr = NonNull::new((ffi_str as *const FfiStr<'_>).cast_mut());
 
-            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, ptr, (self as *const Self).cast());
+            _SET_ENTITY_LABEL_FN.unwrap_unchecked()((self as *const Self).cast(), entity_id, ptr);
         }
 
         #[cfg(feature = "dynamic_wasm")]
@@ -1119,9 +1119,9 @@ impl Engine {
                 wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
                     let ptr = NonNull::new((ffi_str_ptr).cast_mut());
                     _SET_ENTITY_LABEL_FN.unwrap_unchecked()(
+                        (self as *const Self).cast(),
                         entity_id,
                         ptr,
-                        (self as *const Self).cast(),
                     );
                 });
             });
@@ -1131,7 +1131,7 @@ impl Engine {
     /// Clears an entity's label.
     pub fn clear_entity_label(&self, entity_id: EntityId) {
         unsafe {
-            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, None, (self as *const Self).cast());
+            _SET_ENTITY_LABEL_FN.unwrap_unchecked()((self as *const Self).cast(), entity_id, None);
         }
     }
 
@@ -1146,10 +1146,10 @@ impl Engine {
 
         unsafe {
             _CALL_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
-                (self as *const Self).cast(),
             );
         }
     }
@@ -1165,10 +1165,10 @@ impl Engine {
 
         unsafe {
             _CALL_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
-                (self as *const Self).cast(),
             );
         }
     }
@@ -1193,12 +1193,12 @@ impl Engine {
 
         unsafe {
             _CALL_ASYNC_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
                 user_data.as_ptr().cast(),
                 user_data.len(),
-                (self as *const Self).cast(),
             );
         }
     }
@@ -1222,12 +1222,12 @@ impl Engine {
 
         unsafe {
             _CALL_ASYNC_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
                 user_data.as_ptr().cast(),
                 user_data.len(),
-                (self as *const Self).cast(),
             );
         }
     }
@@ -1244,10 +1244,10 @@ impl Engine {
     ) {
         unsafe {
             _SET_PARENT_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 entity_id,
                 parent_data,
                 keep_world_space_transform,
-                (self as *const Self).cast(),
             );
         }
     }
@@ -1260,9 +1260,9 @@ impl Engine {
         #[cfg(not(feature = "dynamic_wasm"))]
         let res = unsafe {
             _GET_PARENT_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 entity_id,
                 &mut out_parent_id,
-                (self as *const Self).cast(),
             )
         };
 
@@ -1270,9 +1270,9 @@ impl Engine {
         let res = unsafe {
             wasm::alloc_and_read_external(&mut out_parent_id, |out_parent_id| {
                 _GET_PARENT_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
                     entity_id,
                     out_parent_id,
-                    (self as *const Self).cast(),
                 )
             })
         };
@@ -1292,9 +1292,9 @@ impl Engine {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 &FfiStr::new(fully_qualified_system_name),
                 enabled,
-                (self as *const Self).cast(),
             );
         }
 
@@ -1310,9 +1310,9 @@ impl Engine {
 
                     wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
                         _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(
+                            (self as *const Self).cast(),
                             ffi_str_ptr,
                             enabled,
-                            (self as *const Self).cast(),
                         );
                     });
                 },
@@ -1723,30 +1723,30 @@ impl<T> Drop for Mut<'_, T> {
 // as well as the `get_core_proc_addr` function in the `c_api` mod.
 
 pub static mut _LOAD_SCENE: Option<
-    unsafe extern "C" fn(scene_str: *const FfiStr<'_>, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, scene_str: *const FfiStr<'_>),
 > = None;
 
 // spawning
 pub static mut _SPAWN: Option<
-    unsafe extern "C" fn(*const ComponentRef<'_>, usize, ctx: *const c_void) -> Option<EntityId>,
+    unsafe extern "C" fn(ctx: *const c_void, *const ComponentRef<'_>, usize) -> Option<EntityId>,
 > = None;
 
-pub static mut _DESPAWN: Option<unsafe extern "C" fn(EntityId, ctx: *const c_void)> = None;
+pub static mut _DESPAWN: Option<unsafe extern "C" fn(ctx: *const c_void, EntityId)> = None;
 
 pub static mut _ADD_COMPONENTS_FN: Option<
-    unsafe extern "C" fn(EntityId, *const ComponentRef<'_>, usize, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *const ComponentRef<'_>, usize),
 > = None;
 
 pub static mut _REMOVE_COMPONENTS_FN: Option<
-    unsafe extern "C" fn(EntityId, *const EcsTypeId, usize, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *const EcsTypeId, usize),
 > = None;
 
 pub static mut _ENTITY_LABEL_FN: Option<
-    unsafe extern "C" fn(EntityId, *mut MaybeUninit<FfiStr<'_>>, ctx: *const c_void) -> bool,
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *mut MaybeUninit<FfiStr<'_>>) -> bool,
 > = None;
 
 pub static mut _SET_ENTITY_LABEL_FN: Option<
-    unsafe extern "C" fn(EntityId, Option<NonNull<FfiStr<'_>>>, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, Option<NonNull<FfiStr<'_>>>),
 > = None;
 
 // events
@@ -1759,25 +1759,25 @@ pub static mut _EVENT_GET_FN: Option<
 pub static mut _EVENT_SEND_FN: Option<unsafe extern "C" fn(*const c_void, *const u8, usize)> = None;
 
 pub static mut _CALL_FN: Option<
-    unsafe extern "C" fn(EcsTypeId, *const c_void, usize, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, EcsTypeId, *const c_void, usize),
 > = None;
 
 pub static mut _CALL_ASYNC_FN: Option<
-    unsafe extern "C" fn(EcsTypeId, *const c_void, usize, *const c_void, usize, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, EcsTypeId, *const c_void, usize, *const c_void, usize),
 > = None;
 
 // parentage
 pub static mut _SET_PARENT_FN: Option<
-    unsafe extern "C" fn(EntityId, Option<EntityId>, bool, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, Option<EntityId>, bool),
 > = None;
 
 pub static mut _GET_PARENT_FN: Option<
-    unsafe extern "C" fn(EntityId, *mut MaybeUninit<Option<EntityId>>, ctx: *const c_void) -> bool,
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *mut MaybeUninit<Option<EntityId>>) -> bool,
 > = None;
 
 // system meta
 pub static mut _SET_SYSTEM_ENABLED_FN: Option<
-    unsafe extern "C" fn(*const FfiStr<'_>, bool, ctx: *const c_void),
+    unsafe extern "C" fn(ctx: *const c_void, *const FfiStr<'_>, bool),
 > = None;
 
 #[cfg(feature = "dynamic_wasm")]

@@ -96,7 +96,7 @@ impl<F> Completion<F> {
 
 impl<F: AsyncCompletion> Completion<F> {
     pub fn len_fb(&self) -> usize {
-        unsafe { _COMPLETION_COUNT_FN.unwrap_unchecked()(F::id(), self.handle) }
+        unsafe { _COMPLETION_COUNT_FN.unwrap_unchecked()(self.handle, F::id()) }
     }
 
     pub fn is_empty_fb(&self) -> bool {
@@ -112,7 +112,7 @@ impl<F: AsyncCompletion> Completion<F> {
         <F::UserData<'_> as Follow<'_>>::Inner,
     )> {
         unsafe {
-            let completion = _COMPLETION_GET_FN.unwrap_unchecked()(F::id(), index, self.handle);
+            let completion = _COMPLETION_GET_FN.unwrap_unchecked()(self.handle, F::id(), index);
 
             if completion.return_value_ptr.is_null() || completion.user_data_ptr.is_null() {
                 return None;
@@ -197,9 +197,9 @@ impl AsyncCompletionValue {
 }
 
 pub static mut _COMPLETION_COUNT_FN: Option<
-    unsafe extern "C" fn(EcsTypeId, ctx: *const c_void) -> usize,
+    unsafe extern "C" fn(ctx: *const c_void, EcsTypeId) -> usize,
 > = None;
 
 pub static mut _COMPLETION_GET_FN: Option<
-    unsafe extern "C" fn(EcsTypeId, usize, ctx: *const c_void) -> AsyncCompletionValue,
+    unsafe extern "C" fn(ctx: *const c_void, EcsTypeId, usize) -> AsyncCompletionValue,
 > = None;
