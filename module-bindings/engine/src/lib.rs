@@ -636,17 +636,17 @@ pub struct Window {
     pub size: Vec2,
 }
 
-/// An FFI-safe `&str`.
+/// An FFI-safe `&[T]`.
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub struct FfiStr<'a> {
-    ptr: *const u8,
+pub struct FfiSlice<'a, T> {
+    ptr: *const T,
     len: usize,
-    marker: PhantomData<&'a str>,
+    marker: PhantomData<&'a [T]>,
 }
 
-impl<'a> FfiStr<'a> {
-    pub fn new(val: &'a str) -> Self {
+impl<'a, T> FfiSlice<'a, T> {
+    pub fn new(val: &'a [T]) -> Self {
         Self {
             ptr: val.as_ptr(),
             len: val.len(),
@@ -656,9 +656,9 @@ impl<'a> FfiStr<'a> {
 
     /// # Safety
     ///
-    /// `ptr` must be non-null, valid for reads of `len` bytes, and must point
-    /// to a valid UTF-8 string.
-    pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
+    /// `ptr` must be non-null, valid for reads of `len * size_of::<T>()` bytes,
+    /// and must be properly aligned.
+    pub unsafe fn from_raw_parts(ptr: *const T, len: usize) -> Self {
         Self {
             ptr,
             len,
@@ -666,12 +666,12 @@ impl<'a> FfiStr<'a> {
         }
     }
 
-    pub fn as_str(&self) -> &'a str {
-        unsafe { str::from_utf8_unchecked(slice::from_raw_parts(self.ptr, self.len)) }
+    pub fn as_slice(&self) -> &'a [T] {
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
 
-    pub fn into_str(self) -> &'a str {
-        unsafe { str::from_utf8_unchecked(slice::from_raw_parts(self.ptr, self.len)) }
+    pub fn into_slice(self) -> &'a [T] {
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -682,8 +682,53 @@ impl<'a> FfiStr<'a> {
         self.len
     }
 
-    pub fn as_ptr(&self) -> *const u8 {
+    pub fn as_ptr(&self) -> *const T {
         self.ptr
+    }
+}
+
+/// An FFI-safe `&str`.
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct FfiStr<'a> {
+    data: FfiSlice<'a, u8>,
+}
+
+impl<'a> FfiStr<'a> {
+    pub fn new(val: &'a str) -> Self {
+        Self {
+            data: FfiSlice::new(val.as_bytes()),
+        }
+    }
+
+    /// # Safety
+    ///
+    /// `ptr` must be non-null, valid for reads of `len` bytes, and must point
+    /// to a valid UTF-8 string.
+    pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
+        Self {
+            data: unsafe { FfiSlice::from_raw_parts(ptr, len) },
+        }
+    }
+
+    pub fn as_str(&self) -> &'a str {
+        unsafe { str::from_utf8_unchecked(self.data.as_slice()) }
+    }
+
+    pub fn into_str(self) -> &'a str {
+        unsafe { str::from_utf8_unchecked(self.data.into_slice()) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.data.as_ptr()
     }
 }
 
@@ -876,14 +921,17 @@ impl ComponentBuilder {
     }
 }
 
-pub struct Engine;
+/// The primary interface to engine APIs.
+pub struct Engine {
+    _private: (),
+}
 
 impl Engine {
     /// Loads a string containing scene data into the engine
-    pub fn load_scene(scene_str: &str) {
+    pub fn load_scene(&self, scene_str: &str) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
-            _LOAD_SCENE.unwrap_unchecked()(&FfiStr::new(scene_str));
+            _LOAD_SCENE.unwrap_unchecked()((self as *const Self).cast(), &FfiStr::new(scene_str));
         }
 
         #[cfg(feature = "dynamic_wasm")]
@@ -892,7 +940,7 @@ impl Engine {
                 let ffi_str = FfiStr::from_raw_parts(scene_str_ptr, scene_str.len());
 
                 wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
-                    _LOAD_SCENE.unwrap_unchecked()(ffi_str_ptr);
+                    _LOAD_SCENE.unwrap_unchecked()((self as *const Self).cast(), ffi_str_ptr);
                 });
             });
         }
@@ -904,18 +952,26 @@ impl Engine {
     ///
     /// NOTE: commands are deferred until the end of the frame, so the spawned
     /// entity will not be iterated by queries on the frame it is spawned.
-    pub fn spawn(components: &[ComponentRef<'_>]) -> EntityId {
+    pub fn spawn(&self, components: &[ComponentRef<'_>]) -> EntityId {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
-            _SPAWN.unwrap_unchecked()(components.as_ptr(), components.len())
-                .expect("could not spawn entity")
+            _SPAWN.unwrap_unchecked()(
+                (self as *const Self).cast(),
+                components.as_ptr(),
+                components.len(),
+            )
+            .expect("could not spawn entity")
         }
 
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
             wasm::alloc_components_external(components, |components| {
-                _SPAWN.unwrap_unchecked()(components.as_ptr(), components.len())
-                    .expect("could not spawn entity")
+                _SPAWN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
+                    components.as_ptr(),
+                    components.len(),
+                )
+                .expect("could not spawn entity")
             })
         }
     }
@@ -924,9 +980,9 @@ impl Engine {
     ///
     /// NOTE: commands are deferred until the end of the frame, so the despawned
     /// entity will still be iterated by queries on the frame it is despawned.
-    pub fn despawn(entity_id: EntityId) {
+    pub fn despawn(&self, entity_id: EntityId) {
         unsafe {
-            _DESPAWN.unwrap_unchecked()(entity_id);
+            _DESPAWN.unwrap_unchecked()((self as *const Self).cast(), entity_id);
         }
     }
 
@@ -935,16 +991,22 @@ impl Engine {
     /// NOTE: commands are deferred until the end of the frame, so the new
     /// components will not be iterated by queries on the frame that they are
     /// added.
-    pub fn add_components(entity_id: EntityId, components: &[ComponentRef<'_>]) {
+    pub fn add_components(&self, entity_id: EntityId, components: &[ComponentRef<'_>]) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
-            _ADD_COMPONENTS_FN.unwrap_unchecked()(entity_id, components.as_ptr(), components.len());
+            _ADD_COMPONENTS_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
+                entity_id,
+                components.as_ptr(),
+                components.len(),
+            );
         }
 
         #[cfg(feature = "dynamic_wasm")]
         unsafe {
             wasm::alloc_components_external(components, |components| {
                 _ADD_COMPONENTS_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
                     entity_id,
                     components.as_ptr(),
                     components.len(),
@@ -958,10 +1020,11 @@ impl Engine {
     /// NOTE: commands are deferred until the end of the frame, so the removed
     /// components will still be iterated by queries on the frame that they are
     /// removed.
-    pub fn remove_components(entity_id: EntityId, component_ids: &[EcsTypeId]) {
+    pub fn remove_components(&self, entity_id: EntityId, component_ids: &[EcsTypeId]) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _REMOVE_COMPONENTS_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 entity_id,
                 component_ids.as_ptr(),
                 component_ids.len(),
@@ -972,6 +1035,7 @@ impl Engine {
         unsafe {
             wasm::alloc_and_write_external_slice(component_ids, |ptr| {
                 _REMOVE_COMPONENTS_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
                     entity_id,
                     ptr.cast(),
                     component_ids.len(),
@@ -988,7 +1052,7 @@ impl Engine {
     /// This function returns a value via a closure rather than a direct return
     /// type, because the lifetime of the label is not guaranteed to be valid
     /// indefinitely.
-    pub fn entity_label<F, R>(entity_id: EntityId, f: F) -> R
+    pub fn entity_label<F, R>(&self, entity_id: EntityId, f: F) -> R
     where
         F: FnOnce(Option<&str>) -> R,
     {
@@ -996,7 +1060,11 @@ impl Engine {
         unsafe {
             let mut out_label = MaybeUninit::uninit();
 
-            let label = if _ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, &mut out_label) {
+            let label = if _ENTITY_LABEL_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
+                entity_id,
+                &mut out_label,
+            ) {
                 Some(out_label.assume_init().into_str())
             } else {
                 None
@@ -1010,7 +1078,11 @@ impl Engine {
             let mut out_label = MaybeUninit::uninit();
 
             let res = wasm::alloc_and_read_external(&mut out_label, |out_label| {
-                _ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, out_label)
+                _ENTITY_LABEL_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
+                    entity_id,
+                    out_label,
+                )
             });
 
             if res {
@@ -1033,13 +1105,13 @@ impl Engine {
 
     /// Associates an entity with a label. An entity may only have one label,
     /// and all labels must be unique (entities cannot share identical labels).
-    pub fn set_entity_label(entity_id: EntityId, label: &str) {
+    pub fn set_entity_label(&self, entity_id: EntityId, label: &str) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             let ffi_str = &FfiStr::new(label);
             let ptr = NonNull::new((ffi_str as *const FfiStr<'_>).cast_mut());
 
-            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, ptr);
+            _SET_ENTITY_LABEL_FN.unwrap_unchecked()((self as *const Self).cast(), entity_id, ptr);
         }
 
         #[cfg(feature = "dynamic_wasm")]
@@ -1049,20 +1121,24 @@ impl Engine {
 
                 wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
                     let ptr = NonNull::new((ffi_str_ptr).cast_mut());
-                    _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, ptr);
+                    _SET_ENTITY_LABEL_FN.unwrap_unchecked()(
+                        (self as *const Self).cast(),
+                        entity_id,
+                        ptr,
+                    );
                 });
             });
         }
     }
 
     /// Clears an entity's label.
-    pub fn clear_entity_label(entity_id: EntityId) {
+    pub fn clear_entity_label(&self, entity_id: EntityId) {
         unsafe {
-            _SET_ENTITY_LABEL_FN.unwrap_unchecked()(entity_id, None);
+            _SET_ENTITY_LABEL_FN.unwrap_unchecked()((self as *const Self).cast(), entity_id, None);
         }
     }
 
-    pub fn call<'a, F: Callable>(parameters: impl Into<F::Parameters<'a>>)
+    pub fn call<'a, F: Callable>(&self, parameters: impl Into<F::Parameters<'a>>)
     where
         F::Parameters<'a>: Push,
     {
@@ -1073,6 +1149,7 @@ impl Engine {
 
         unsafe {
             _CALL_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
@@ -1081,6 +1158,7 @@ impl Engine {
     }
 
     pub fn call_with_builder<'a, F: Callable>(
+        &self,
         parameters: impl FnOnce(&mut FlatBufferBuilder<'a>) -> WIPOffset<F::Parameters<'a>>,
     ) {
         let mut builder = FlatBufferBuilder::new();
@@ -1090,6 +1168,7 @@ impl Engine {
 
         unsafe {
             _CALL_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
@@ -1098,6 +1177,7 @@ impl Engine {
     }
 
     pub fn call_async<'a, F: AsyncCompletion>(
+        &self,
         parameters: impl Into<<F::Function as Callable>::Parameters<'a>>,
         user_data: impl Into<F::UserData<'a>>,
     ) where
@@ -1116,6 +1196,7 @@ impl Engine {
 
         unsafe {
             _CALL_ASYNC_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
@@ -1126,6 +1207,7 @@ impl Engine {
     }
 
     pub fn call_async_with_builder<'a, F: AsyncCompletion>(
+        &self,
         parameters: impl FnOnce(
             &mut FlatBufferBuilder<'a>,
         ) -> WIPOffset<<F::Function as Callable>::Parameters<'a>>,
@@ -1143,6 +1225,7 @@ impl Engine {
 
         unsafe {
             _CALL_ASYNC_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 F::id(),
                 parameter_data.as_ptr().cast(),
                 parameter_data.len(),
@@ -1157,27 +1240,43 @@ impl Engine {
     /// This assignment is deferred until the next data sync point (currently the end of cpu system updates).
     /// Until that point, the entity's parent will be unchanged.
     pub fn set_parent_deferred(
+        &self,
         entity_id: EntityId,
         parent_data: Option<EntityId>,
         keep_world_space_transform: bool,
     ) {
         unsafe {
-            _SET_PARENT_FN.unwrap_unchecked()(entity_id, parent_data, keep_world_space_transform);
+            _SET_PARENT_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
+                entity_id,
+                parent_data,
+                keep_world_space_transform,
+            );
         }
     }
 
     /// Get the parent id of the given entity. If the requested entity has no parent,
     /// (or if the given entity doesn't exist) this function will return `None`.
-    pub fn get_parent(entity_id: EntityId) -> Option<EntityId> {
+    pub fn get_parent(&self, entity_id: EntityId) -> Option<EntityId> {
         let mut out_parent_id = MaybeUninit::<Option<EntityId>>::uninit();
 
         #[cfg(not(feature = "dynamic_wasm"))]
-        let res = unsafe { _GET_PARENT_FN.unwrap_unchecked()(entity_id, &mut out_parent_id) };
+        let res = unsafe {
+            _GET_PARENT_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
+                entity_id,
+                &mut out_parent_id,
+            )
+        };
 
         #[cfg(feature = "dynamic_wasm")]
         let res = unsafe {
             wasm::alloc_and_read_external(&mut out_parent_id, |out_parent_id| {
-                _GET_PARENT_FN.unwrap_unchecked()(entity_id, out_parent_id)
+                _GET_PARENT_FN.unwrap_unchecked()(
+                    (self as *const Self).cast(),
+                    entity_id,
+                    out_parent_id,
+                )
             })
         };
 
@@ -1188,10 +1287,15 @@ impl Engine {
         }
     }
 
-    pub fn set_fully_qualified_system_enabled(fully_qualified_system_name: &str, enabled: bool) {
+    pub fn set_fully_qualified_system_enabled(
+        &self,
+        fully_qualified_system_name: &str,
+        enabled: bool,
+    ) {
         #[cfg(not(feature = "dynamic_wasm"))]
         unsafe {
             _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(
+                (self as *const Self).cast(),
                 &FfiStr::new(fully_qualified_system_name),
                 enabled,
             );
@@ -1208,7 +1312,11 @@ impl Engine {
                     );
 
                     wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
-                        _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(ffi_str_ptr, enabled);
+                        _SET_SYSTEM_ENABLED_FN.unwrap_unchecked()(
+                            (self as *const Self).cast(),
+                            ffi_str_ptr,
+                            enabled,
+                        );
                     });
                 },
             );
@@ -1617,29 +1725,31 @@ impl<T> Drop for Mut<'_, T> {
 // update the codegen crate responsible for generating the FFI boilerplate code,
 // as well as the `get_core_proc_addr` function in the `c_api` mod.
 
-pub static mut _LOAD_SCENE: Option<unsafe extern "C" fn(scene_str: *const FfiStr<'_>)> = None;
+pub static mut _LOAD_SCENE: Option<
+    unsafe extern "C" fn(ctx: *const c_void, scene_str: *const FfiStr<'_>),
+> = None;
 
 // spawning
 pub static mut _SPAWN: Option<
-    unsafe extern "C" fn(*const ComponentRef<'_>, usize) -> Option<EntityId>,
+    unsafe extern "C" fn(ctx: *const c_void, *const ComponentRef<'_>, usize) -> Option<EntityId>,
 > = None;
 
-pub static mut _DESPAWN: Option<unsafe extern "C" fn(EntityId)> = None;
+pub static mut _DESPAWN: Option<unsafe extern "C" fn(ctx: *const c_void, EntityId)> = None;
 
 pub static mut _ADD_COMPONENTS_FN: Option<
-    unsafe extern "C" fn(EntityId, *const ComponentRef<'_>, usize),
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *const ComponentRef<'_>, usize),
 > = None;
 
 pub static mut _REMOVE_COMPONENTS_FN: Option<
-    unsafe extern "C" fn(EntityId, *const EcsTypeId, usize),
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *const EcsTypeId, usize),
 > = None;
 
 pub static mut _ENTITY_LABEL_FN: Option<
-    unsafe extern "C" fn(EntityId, *mut MaybeUninit<FfiStr<'_>>) -> bool,
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *mut MaybeUninit<FfiStr<'_>>) -> bool,
 > = None;
 
 pub static mut _SET_ENTITY_LABEL_FN: Option<
-    unsafe extern "C" fn(EntityId, Option<NonNull<FfiStr<'_>>>),
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, Option<NonNull<FfiStr<'_>>>),
 > = None;
 
 // events
@@ -1651,22 +1761,27 @@ pub static mut _EVENT_GET_FN: Option<
 
 pub static mut _EVENT_SEND_FN: Option<unsafe extern "C" fn(*const c_void, *const u8, usize)> = None;
 
-pub static mut _CALL_FN: Option<unsafe extern "C" fn(EcsTypeId, *const c_void, usize)> = None;
+pub static mut _CALL_FN: Option<
+    unsafe extern "C" fn(ctx: *const c_void, EcsTypeId, *const c_void, usize),
+> = None;
 
 pub static mut _CALL_ASYNC_FN: Option<
-    unsafe extern "C" fn(EcsTypeId, *const c_void, usize, *const c_void, usize),
+    unsafe extern "C" fn(ctx: *const c_void, EcsTypeId, *const c_void, usize, *const c_void, usize),
 > = None;
 
 // parentage
-pub static mut _SET_PARENT_FN: Option<unsafe extern "C" fn(EntityId, Option<EntityId>, bool)> =
-    None;
+pub static mut _SET_PARENT_FN: Option<
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, Option<EntityId>, bool),
+> = None;
 
 pub static mut _GET_PARENT_FN: Option<
-    unsafe extern "C" fn(EntityId, *mut MaybeUninit<Option<EntityId>>) -> bool,
+    unsafe extern "C" fn(ctx: *const c_void, EntityId, *mut MaybeUninit<Option<EntityId>>) -> bool,
 > = None;
 
 // system meta
-pub static mut _SET_SYSTEM_ENABLED_FN: Option<unsafe extern "C" fn(*const FfiStr<'_>, bool)> = None;
+pub static mut _SET_SYSTEM_ENABLED_FN: Option<
+    unsafe extern "C" fn(ctx: *const c_void, *const FfiStr<'_>, bool),
+> = None;
 
 #[cfg(feature = "dynamic_wasm")]
 pub mod wasm {
@@ -1914,6 +2029,7 @@ pub enum ArgType {
     Completion,
     DataAccessMut,
     DataAccessRef,
+    Engine,
     EventReader,
     EventWriter,
     Query,
@@ -1925,9 +2041,10 @@ impl ArgType {
             0 => Self::Completion,
             1 => Self::DataAccessMut,
             2 => Self::DataAccessRef,
-            3 => Self::EventReader,
-            4 => Self::EventWriter,
-            5 => Self::Query,
+            3 => Self::Engine,
+            4 => Self::EventReader,
+            5 => Self::EventWriter,
+            6 => Self::Query,
             _ => {
                 return None;
             }
@@ -1935,18 +2052,4 @@ impl ArgType {
 
         Some(variant)
     }
-}
-
-/// `FfiVec` is intended to be used when transferring a Rust side Vec to C via
-/// FFI. Because [`Vec::into_raw_parts`] isn't stable, we manually create our
-/// own in the form of this struct. This memory should not be freed on the C
-/// side, but instead should be passed into a Rust provided free function which
-/// will call [`Vec::from_raw_parts`] with the parameters in this struct and
-/// then free the memory.
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct FfiVec<T> {
-    pub ptr: *mut T,
-    pub len: usize,
-    pub capacity: usize,
 }

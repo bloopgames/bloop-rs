@@ -5,23 +5,27 @@
 
 use std::{ffi::c_void, mem::transmute, ptr::NonNull};
 
-use engine::prelude::*;
+use engine::{FfiStr, prelude::*};
 
-pub fn send_event(contents: &str) {
+pub fn send_event(engine: &Engine, contents: &str) {
     #[cfg(not(feature = "dynamic_wasm"))]
     unsafe {
-        SEND_EVENT.unwrap_unchecked()(contents.as_ptr(), contents.len());
+        SEND_EVENT.unwrap_unchecked()(engine, &FfiStr::new(contents));
     }
 
     #[cfg(feature = "dynamic_wasm")]
     unsafe {
         engine::wasm::alloc_and_write_external_slice(contents.as_bytes(), |contents_ptr| {
-            SEND_EVENT.unwrap_unchecked()(contents_ptr, contents.len());
+            let ffi_str = FfiStr::from_raw_parts(contents_ptr, contents.len());
+
+            engine::wasm::alloc_and_write_external(&ffi_str, |ffi_str_ptr| {
+                SEND_EVENT.unwrap_unchecked()(engine, ffi_str_ptr);
+            });
         });
     }
 }
 
-static mut SEND_EVENT: Option<unsafe extern "C" fn(*const u8, usize)> = None;
+static mut SEND_EVENT: Option<unsafe extern "C" fn(*const Engine, *const FfiStr<'_>)> = None;
 
 #[allow(clippy::missing_transmute_annotations, clippy::missing_safety_doc)]
 pub unsafe fn load_module_proc_addrs(

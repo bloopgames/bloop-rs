@@ -28,8 +28,8 @@ unsafe impl<Q: QueryData> Sync for Query<'_, Q> {}
 impl<'a, Q: QueryData> Query<'a, Q> {
     /// # Safety
     ///
-    /// `Query` should only be constructed from a valid pointer retrieved
-    /// from a corresponding `Query` parameter in an ECS system's FFI function.
+    /// `Query` should only be constructed from a valid pointer retrieved from a
+    /// corresponding `Query` parameter in an ECS system's FFI function.
     pub unsafe fn new(query_handle: *mut c_void) -> Self {
         Self {
             handle: query_handle,
@@ -609,11 +609,11 @@ pub static mut _GET_FN: Option<
 > = None;
 
 pub static mut _GET_ENTITY_FN: Option<
-    unsafe extern "C" fn(*mut c_void, EntityId, *mut *const c_void) -> i32,
+    unsafe extern "C" fn(*const c_void, EntityId, *mut *const c_void) -> i32,
 > = None;
 
 pub static mut _GET_LABEL_FN: Option<
-    unsafe extern "C" fn(*mut c_void, *const FfiStr<'_>, *mut *const c_void) -> i32,
+    unsafe extern "C" fn(*const c_void, *const FfiStr<'_>, *mut *const c_void) -> i32,
 > = None;
 
 pub static mut _FOR_EACH_FN: Option<
