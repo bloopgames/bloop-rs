@@ -921,7 +921,10 @@ impl ComponentBuilder {
     }
 }
 
-pub struct Engine;
+/// The primary interface to engine APIs.
+pub struct Engine {
+    _private: (),
+}
 
 impl Engine {
     /// Loads a string containing scene data into the engine
