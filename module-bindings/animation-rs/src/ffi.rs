@@ -53,7 +53,7 @@ pub static mut SPRITE_ANIMATIONS_LOAD_CUSTOM_ANIMATION: Option<
 pub static mut SPRITE_ANIMATIONS_GET: Option<
     unsafe extern "C" fn(
         sprite_animations: *const SpriteAnimations,
-        id: *const SpriteAnimationId,
+        id: SpriteAnimationId,
     ) -> Option<NonNull<SpriteAnimationAssetState>>,
 > = None;
 

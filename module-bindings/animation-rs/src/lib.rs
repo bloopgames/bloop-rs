@@ -85,18 +85,8 @@ impl SpriteAnimations {
         }
     }
 
-    pub fn get(&self, id: &SpriteAnimationId) -> Option<Ref<'_, SpriteAnimationAssetState>> {
-        #[cfg(not(feature = "dynamic_wasm"))]
-        let ptr = unsafe { SPRITE_ANIMATIONS_GET.unwrap_unchecked()(self, id) };
-
-        #[cfg(feature = "dynamic_wasm")]
-        let ptr = unsafe {
-            engine::wasm::alloc_and_write_external(id, |id| {
-                SPRITE_ANIMATIONS_GET.unwrap_unchecked()(self, id)
-            })
-        };
-
-        ptr.map(|ptr| unsafe { Ref::new(ptr) })
+    pub fn get(&self, id: SpriteAnimationId) -> Option<Ref<'_, SpriteAnimationAssetState>> {
+        unsafe { SPRITE_ANIMATIONS_GET.unwrap_unchecked()(self, id).map(|ptr| Ref::new(ptr)) }
     }
 
     /// Sets the active tag for the given sprite animation. If the tag is
@@ -150,7 +140,7 @@ impl SpriteAnimations {
 /// asset loads, it will be set to `Loaded` (or `Invalid` if the asset failed to
 /// load).
 #[derive(Debug, Serialize, Deserialize)]
-#[repr(C)]
+#[repr(u8)]
 pub enum SpriteAnimationAssetState {
     Loaded(SpriteAnimationInfo),
     Loading { path: EcsString },
@@ -191,7 +181,7 @@ pub struct SpriteAnimationTag {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-#[repr(C)]
+#[repr(u8)]
 pub enum PlaybackDirection {
     #[default]
     Forward,
